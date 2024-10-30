@@ -145,7 +145,7 @@ if __name__ == '__main__':
         name = f'{TEXT_DESCRIPTION}_{mini_text}_{config["model_mode"]}_RUN_{RUN}_{date_time}'
         current_dir = os.getcwd()
         current_folder = os.path.basename(current_dir)
-        ckpt_path = f'../{current_folder}/VizDoom/VizDoom_checkpoints/{ckpt_folder}/{name}/'
+        ckpt_path = f'../{current_folder}/ManiSkill/ManiSkill_checkpoints/{ckpt_folder}/{name}/'
         isExist = os.path.exists(ckpt_path)
         if not isExist:
             os.makedirs(ckpt_path)

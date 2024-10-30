@@ -52,5 +52,5 @@ model_config:
 
 online_inference_config:
   use_argmax: False # False
-  episode_timeout: 4200 # 2100
-  desired_return_1: 56.5 # 56.5
+  episode_timeout: 100 # 2100
+  desired_return_1: 1.0 # 56.5
