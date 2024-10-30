@@ -2,6 +2,7 @@
 *.png
 *.jpg
 *.mp4
+*.pt
 *.json
 *.h5
 *.pickle
@@ -21,6 +22,7 @@
 *.ipynb
 wandb/
 __pycache__/
+*runs/
 *.ini
 *_vizdoom.ini
 *wandb_config.yaml
