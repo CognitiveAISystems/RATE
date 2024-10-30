@@ -19,7 +19,7 @@
 !table_empty.csv
 *._csv
 *.csv
-*.ipynb
+# *.ipynb
 wandb/
 __pycache__/
 *runs/
