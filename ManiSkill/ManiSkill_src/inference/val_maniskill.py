@@ -2,6 +2,7 @@ import torch
 import numpy as np
 
 from TMaze_new.TMaze_new_src.utils import set_seed
+from collections import defaultdict
 
 import torch
 import gymnasium as gym
@@ -48,7 +49,7 @@ def get_returns_ManiSkill(model, ret, seed, episode_timeout, context_length, dev
     scale = 1
     max_ep_len = episode_timeout#* 3
     
-    state_0, _ = env.reset()
+    state_0, _ = env.reset(seed=seed)
     state_0 = state_0['rgb'][0]
     state = torch.tensor(state_0).float().permute(2, 0, 1) # model trained on [C, H, W], but env returns [H, W, C]
     state = state.reshape(1, 1, state.shape[0], state.shape[1], state.shape[2])
@@ -74,6 +75,7 @@ def get_returns_ManiSkill(model, ret, seed, episode_timeout, context_length, dev
     
     act_list= []
     memories = []
+    eval_metrics = defaultdict(list)
     
     for t in range(max_ep_len):
         actions = torch.cat([actions, torch.zeros((1, act_dim), device=device)], dim=0)
@@ -166,7 +168,10 @@ def get_returns_ManiSkill(model, ret, seed, episode_timeout, context_length, dev
         actions[-1, :] = act
         act_list.append(act)
         
-        state, reward, terminated, truncated, info = env.step(act) # state [H, W, C], need [C, H, W]
+        state, reward, terminated, truncated, eval_infos = env.step(act) # state [H, W, C], need [C, H, W]
+        if "final_info" in eval_infos:
+            for k, v in eval_infos["final_info"]["episode"].items():
+                eval_metrics[k].append(v)
         state = state['rgb'][0]
         frames.append(env.render())
         state = state.float().permute(2, 0, 1)
@@ -191,7 +196,7 @@ def get_returns_ManiSkill(model, ret, seed, episode_timeout, context_length, dev
     if create_video == True:
         print("\n")
 
-    return episode_return.detach().cpu().numpy().item(), act_list, t, out_states, memories, attn_map, frames
+    return episode_return.detach().cpu().numpy().item(), act_list, t, out_states, memories, attn_map, frames, eval_metrics
 
 
 # ret = 0.8
@@ -199,7 +204,7 @@ def get_returns_ManiSkill(model, ret, seed, episode_timeout, context_length, dev
 
 
 
-# episode_return, act_list, t, _, _, attn_map, frames = get_returns_ManiSkill(model=model, ret=ret, seed=SEED, episode_timeout=100, 
+# episode_return, act_list, t, _, _, attn_map, frames = get_returns_ManiSkill(model=model, ret=ret, seed=SEED, episode_timeout=50, 
 #                                                                             context_length=config["training_config"]["context_length"], 
 #                                                                             device=device, act_dim=config["model_config"]["ACTION_DIM"], 
 #                                                                             config=config,

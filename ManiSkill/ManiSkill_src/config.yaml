@@ -13,7 +13,7 @@ training_config:
   beta_1: 0.9
   beta_2: 0.95
   weight_decay: 0.1
-  batch_size: 64 # 128
+  batch_size: 128 # 128
   warmup_steps: 10000  # 100
   final_tokens: 10000000
   grad_norm_clip: 1.0 # 1.0
@@ -52,5 +52,5 @@ model_config:
 
 online_inference_config:
   use_argmax: False # False
-  episode_timeout: 100 # 2100
+  episode_timeout: 50 # 2100
   desired_return_1: 1.0 # 56.5
