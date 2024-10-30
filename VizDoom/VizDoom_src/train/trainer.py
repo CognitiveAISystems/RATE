@@ -7,10 +7,11 @@ import cv2
 
 from RATE_GTrXL import mem_transformer_v2_GTrXL
 
-from VizDoom.VizDoom_src.utils import z_normalize, inverse_z_normalize
-from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
-from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
-from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
+# from VizDoom.VizDoom_src.utils import z_normalize, inverse_z_normalize
+
+# from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
+# from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
+# from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
 
 
 import warnings
@@ -33,10 +34,15 @@ greens = [0, 1, 4, 5, 7, 12, 13, 19, 22, 23, 24, 30, 32, 33, 34, 35, 36, 37, 39,
 def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experiment):
     if config['model_config']['mode'] == "memory_maze":
         from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
+        tokens_cnt = tokens_cnt_step= 8_000_000
     elif config['model_config']['mode'] == "doom":
         from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
     elif config['model_config']['mode'] == "minigrid_memory":
         from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
+    elif config['model_config']['mode'] == "maniskill-pushcube":
+        from ManiSkill.ManiSkill_src.inference.val_maniskill import get_returns_ManiSkill
+        from collections import defaultdict
+        tokens_cnt = tokens_cnt_step = 4_000_000
     else:
         raise NotImplementedError
 
@@ -85,7 +91,8 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
     ckpt_dict[0] = None
 
     tokens = 0
-    tokens_cnt = 8_000_000
+    
+    # tokens_cnt = 500_000
 
     for epoch in pbar:
         train_imgs = []
@@ -450,5 +457,86 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                                 experiment.log_metrics({f"FINAL_LifeTimeMean_r_{ret}_l_{LENGTH}":   lifetime_mean,
                                             f"FINAL_ReturnsMax_r_{ret}_l_{LENGTH}":     returns_max,
                                             f"FINAL_ReturnsMean_r_{ret}_l_{LENGTH}":    returns_mean}, step=it_counter)
-            
+        
+        elif config["model_config"]["mode"] == 'maniskill-pushcube':
+            if tokens > tokens_cnt:
+                tokens_cnt += tokens_cnt_step
+                if config["model_config"]["mode"] == 'maniskill-pushcube':
+                    model.eval()
+                    video_logged = False
+                    with torch.no_grad():
+                        seeds = np.arange(0, 100).tolist()[::10]
+                        total_rew_mm = 0
+                        cnt = 1
+                        for ret in [config["online_inference_config"]["desired_return_1"]]:
+                            attn_map_received = False
+                            returns = []
+                            ts = []
+
+                            eval_metrics = defaultdict(list)
+                            metrics_maniskill = {"success_once": [],
+                                                 "return": [],
+                                                 "episode_len": [],
+                                                 "reward": [],
+                                                 "success_at_end": []}
+
+                            for i in range(len(seeds)):
+                                episode_return, act_list, t, _, _, attn_map, frames, eval_metrics = get_returns_ManiSkill(model=model, ret=ret, seed=seeds[i], 
+                                                                                        episode_timeout=episode_timeout, 
+                                                                                        context_length=config["training_config"]["context_length"], 
+                                                                                        device=device, act_dim=config["model_config"]["ACTION_DIM"], 
+                                                                                        config=config,
+                                                                                        mean=None,
+                                                                                        std=None,
+                                                                                        use_argmax=config["online_inference_config"]["use_argmax"],
+                                                                                        create_video=False)
+
+                                returns.append(episode_return)
+                                ts.append(t)
+
+                                for k, v in eval_metrics.items():
+                                    mean = torch.stack(v).float().mean().item()
+                                    # if logger is not None:
+                                    #     logger.add_scalar(f"eval/{k}", mean, global_step)
+                                    metrics_maniskill[k].append(mean)
+
+                                total_rew_mm += episode_return
+                                curr_mean_ret = total_rew_mm / cnt
+                                cnt += 1
+
+                                pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+
+
+                            for k, v in metrics_maniskill.items():
+                                metrics_maniskill[k] = np.mean(v)
+                            
+                            # returns_mean = np.mean(returns)
+                            # returns_max = np.max(returns)
+                            # lifetime_mean = np.mean(ts)
+
+                            if wwandb:
+                                # wandb.log({f"LifeTimeMean_{ret}":   lifetime_mean,
+                                #            f"ReturnsMax_{ret}":     returns_max,
+                                #            f"ReturnsMean_{ret}":    returns_mean})
+
+                                for k, v in metrics_maniskill.items():
+                                    wandb.log({f"eval/eval_{k}_mean_{ret}": v})
+
+                                eval_output_dir = "ManiSkill/rate_val"
+                                video_path = f"{eval_output_dir}/0.mp4"
+                                wandb.log({"episode_video": wandb.Video(video_path)})
+                            elif wcomet:
+                                # experiment.log_metrics({f"LifeTimeMean_{ret}":   lifetime_mean,
+                                #            f"ReturnsMax_{ret}":     returns_max,
+                                #            f"ReturnsMean_{ret}":    returns_mean}, step=it_counter)
+                                for k, v in metrics_maniskill.items():
+                                    experiment.log_metrics({f"eval/eval_{k}_mean_{ret}": v}, step=it_counter)
+                                
+                model.train()
+                wandb_step += 1 
+                if wwandb:
+                    wandb.log({"checkpoint_step": tokens.item()})
+                elif wcomet:
+                    experiment.log_metrics({"checkpoint_step": tokens.item()}, step=it_counter)
+                torch.save(model.state_dict(), ckpt_path + str(tokens.item()) + '_KTD.pth')
     return model

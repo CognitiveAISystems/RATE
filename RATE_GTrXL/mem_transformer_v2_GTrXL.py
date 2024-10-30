@@ -121,6 +121,20 @@ class MemTransformerLM(nn.Module):
             self.action_embeddings = nn.Linear(self.ACTION_DIM, d_embed)
             self.ret_emb = nn.Linear(1, d_embed)
 
+        if self.mode == 'maniskill-pushcube':
+            self.head = nn.Sequential(*([nn.Linear(d_embed, self.ACTION_DIM)] + ([nn.Tanh()])))
+            self.state_encoder = nn.Sequential(nn.Conv2d(3, 32, 8, stride=4, padding=0), 
+                                               nn.ReLU(),
+                                               nn.Conv2d(32, 64, 4, stride=2, padding=0), 
+                                               nn.ReLU(),
+                                               nn.Conv2d(64, 64, 3, stride=1, padding=0), 
+                                               nn.ReLU(),
+                                               nn.Flatten(), 
+                                               nn.Linear(9216, d_embed), 
+                                               nn.Tanh())
+            self.action_embeddings = nn.Linear(self.ACTION_DIM, d_embed)
+            self.ret_emb = nn.Linear(1, d_embed)
+
         if self.mode == 'atari':
             self.head = nn.Linear(d_embed, n_token, bias=False)
             self.state_encoder = nn.Sequential(nn.Conv2d(4, 32, 8, stride=4, padding=0), 
@@ -556,7 +570,16 @@ class MemTransformerLM(nn.Module):
                 B, B1, C, H, W = states.shape
                 states = states.reshape(-1, 3, 84, 84).type(torch.float32).contiguous() 
             else:
-                B, B1, C = states.shape 
+                if self.mode == 'maniskill-pushcube':
+                    if len(states.shape) == 5:
+                        B, B1, C, H, W = states.shape
+                    elif len(states.shape) == 6:
+                        B, B1, _, C, H, W = states.shape
+                    else:
+                        B, B1, _ = states.shape 
+                    states = states.reshape(-1, 3, 128, 128).type(torch.float32).contiguous() 
+                else:
+                    B, B1, C = states.shape 
 
             state_embeddings = self.state_encoder(states) # (batch * block_size, n_embd)
             state_embeddings = state_embeddings.reshape(B, B1, self.d_embed)
@@ -577,6 +600,8 @@ class MemTransformerLM(nn.Module):
                         actions = actions.to(dtype=torch.long, device=states.device)
                     action_embeddings = self.action_embeddings(actions).squeeze(2) # (batch, block_size, n_embd)
                 else:
+                    # if self.mode == "maniskill-pushcube":
+                    #     actions = actions.squeeze(-1)
                     action_embeddings = self.action_embeddings(actions) # (batch, block_size, n_embd)
                 if self.mode == 'memory_maze':
                     if use_long:
@@ -630,7 +655,8 @@ class MemTransformerLM(nn.Module):
         
         loss = None
         if target is not None:
-            if self.mode == 'mujoco':
+            if self.mode == 'mujoco' or self.mode == 'maniskill-pushcube':
+                # print(logits.shape, target.shape)
                 loss = nn.MSELoss()(logits, target)
                 
             if self.mode == 'tmaze':
@@ -822,7 +848,7 @@ class MemTransformerLM(nn.Module):
                 loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)),
                                        target.reshape(-1).long(), ignore_index=-10)
             
-            if self.mode == 'mujoco':
+            if self.mode == 'mujoco' or self.mode == 'maniskill-pushcube':
                 # loss = None
                 loss_fn = nn.MSELoss()
                 if target is not None:
