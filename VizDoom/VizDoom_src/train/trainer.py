@@ -41,7 +41,8 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
         from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
     elif config['model_config']['mode'] == "maniskill-pushcube":
         from ManiSkill.ManiSkill_src.inference.val_maniskill import get_returns_ManiSkill
-        tokens_cnt = tokens_cnt_step = 2_000_000
+        from collections import defaultdict
+        tokens_cnt = tokens_cnt_step = 4_000_000
     else:
         raise NotImplementedError
 
@@ -471,8 +472,16 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                             attn_map_received = False
                             returns = []
                             ts = []
+
+                            eval_metrics = defaultdict(list)
+                            metrics_maniskill = {"success_once": [],
+                                                 "return": [],
+                                                 "episode_len": [],
+                                                 "reward": [],
+                                                 "success_at_end": []}
+
                             for i in range(len(seeds)):
-                                episode_return, act_list, t, _, _, attn_map, frames = get_returns_ManiSkill(model=model, ret=ret, seed=seeds[i], 
+                                episode_return, act_list, t, _, _, attn_map, frames, eval_metrics = get_returns_ManiSkill(model=model, ret=ret, seed=seeds[i], 
                                                                                         episode_timeout=episode_timeout, 
                                                                                         context_length=config["training_config"]["context_length"], 
                                                                                         device=device, act_dim=config["model_config"]["ACTION_DIM"], 
@@ -484,6 +493,13 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
 
                                 returns.append(episode_return)
                                 ts.append(t)
+
+                                for k, v in eval_metrics.items():
+                                    mean = torch.stack(v).float().mean().item()
+                                    # if logger is not None:
+                                    #     logger.add_scalar(f"eval/{k}", mean, global_step)
+                                    metrics_maniskill[k].append(mean)
+
                                 total_rew_mm += episode_return
                                 curr_mean_ret = total_rew_mm / cnt
                                 cnt += 1
@@ -491,22 +507,30 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                                 pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
 
 
-                            returns_mean = np.mean(returns)
-                            returns_max = np.max(returns)
-                            lifetime_mean = np.mean(ts)
+                            for k, v in metrics_maniskill.items():
+                                metrics_maniskill[k] = np.mean(v)
+                            
+                            # returns_mean = np.mean(returns)
+                            # returns_max = np.max(returns)
+                            # lifetime_mean = np.mean(ts)
 
                             if wwandb:
-                                wandb.log({f"LifeTimeMean_{ret}":   lifetime_mean,
-                                           f"ReturnsMax_{ret}":     returns_max,
-                                           f"ReturnsMean_{ret}":    returns_mean})
+                                # wandb.log({f"LifeTimeMean_{ret}":   lifetime_mean,
+                                #            f"ReturnsMax_{ret}":     returns_max,
+                                #            f"ReturnsMean_{ret}":    returns_mean})
+
+                                for k, v in metrics_maniskill.items():
+                                    wandb.log({f"eval/eval_{k}_mean_{ret}": v})
 
                                 eval_output_dir = "ManiSkill/rate_val"
                                 video_path = f"{eval_output_dir}/0.mp4"
                                 wandb.log({"episode_video": wandb.Video(video_path)})
                             elif wcomet:
-                                experiment.log_metrics({f"LifeTimeMean_{ret}":   lifetime_mean,
-                                           f"ReturnsMax_{ret}":     returns_max,
-                                           f"ReturnsMean_{ret}":    returns_mean}, step=it_counter)
+                                # experiment.log_metrics({f"LifeTimeMean_{ret}":   lifetime_mean,
+                                #            f"ReturnsMax_{ret}":     returns_max,
+                                #            f"ReturnsMean_{ret}":    returns_mean}, step=it_counter)
+                                for k, v in metrics_maniskill.items():
+                                    experiment.log_metrics({f"eval/eval_{k}_mean_{ret}": v}, step=it_counter)
                                 
                 model.train()
                 wandb_step += 1 
