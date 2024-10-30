@@ -78,8 +78,8 @@ class ManiSkillIterDataset(Dataset):
                     np.savez(path, a=a, o=o, d=d, r=r)
                     self.global_ind += 1
 
-            if self.global_ind >= 128: # ! delete after debugging
-                break
+            # if self.global_ind >= 128: # ! delete after debugging
+            #     break
 
     def __len__(self):
         return len(self.list_of_trajectories)

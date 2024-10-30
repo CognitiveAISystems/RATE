@@ -41,7 +41,7 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
         from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
     elif config['model_config']['mode'] == "maniskill-pushcube":
         from ManiSkill.ManiSkill_src.inference.val_maniskill import get_returns_ManiSkill
-        tokens_cnt = tokens_cnt_step = 200_000
+        tokens_cnt = tokens_cnt_step = 2_000_000
     else:
         raise NotImplementedError
 
