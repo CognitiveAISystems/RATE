@@ -25,14 +25,14 @@ training_config:
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
-  context_length: 30 # if RATE/GRATE: L = L, if DT: L = sections * L
+  context_length: 15 # if RATE/GRATE: L = L, if DT: L = sections * L
   sections: 3        # if RATE/GRATE: S = S, if DT: S = 1
 
 
 model_config:
-  mode: "maniskill-pushcube"
+  mode: "maniskill-pushcube" # Lmax = 50
   STATE_DIM: 3
-  ACTION_DIM: 5 # 2 if OHE else 4
+  ACTION_DIM: 8 # 2 if OHE else 4
   n_token: 10000 # vocab_size
   n_layer: 6 # 3 8
   n_head: 8 # 1 10
@@ -42,7 +42,7 @@ model_config:
   d_inner: 128 # 128 # > d_model
   dropout: 0.2 # 0.2
   dropatt: 0.05 # 0.05
-  mem_len: 300
+  mem_len: 165 # (3*K + 2*nmt)*N
   ext_len: 0
   tie_weight: False
   num_mem_tokens: 5 # 5 d_head * nmt = diff params

@@ -7,10 +7,11 @@ import cv2
 
 from RATE_GTrXL import mem_transformer_v2_GTrXL
 
-from VizDoom.VizDoom_src.utils import z_normalize, inverse_z_normalize
-from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
-from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
-from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
+# from VizDoom.VizDoom_src.utils import z_normalize, inverse_z_normalize
+
+# from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
+# from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
+# from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
 
 
 import warnings
@@ -37,6 +38,8 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
         from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
     elif config['model_config']['mode'] == "minigrid_memory":
         from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
+    elif config['model_config']['mode'] == "maniskill-pushcube":
+        pass
     else:
         raise NotImplementedError
 
