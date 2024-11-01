@@ -3,7 +3,18 @@ import torch
 import wandb
 from tqdm import tqdm
 import math
-import cv2
+# import cv2
+import time
+
+# import os
+# import sys
+# current_dir = os.path.dirname(__file__)
+# parent_dir = os.path.dirname(current_dir)
+# sys.path.append(parent_dir)
+# parent_dir = os.path.dirname(parent_dir)
+# sys.path.append(parent_dir)
+# parent_dir = os.path.dirname(parent_dir)
+# sys.path.append(parent_dir)
 
 from RATE_GTrXL import mem_transformer_v2_GTrXL
 
@@ -12,6 +23,8 @@ from RATE_GTrXL import mem_transformer_v2_GTrXL
 # from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
 # from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
 # from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
+
+
 
 
 import warnings
@@ -42,7 +55,7 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
     elif config['model_config']['mode'] == "maniskill-pushcube":
         from ManiSkill.ManiSkill_src.inference.val_maniskill import get_returns_ManiSkill
         from collections import defaultdict
-        tokens_cnt = tokens_cnt_step = 4_000_000
+        tokens_cnt = tokens_cnt_step = 2_000_000
     else:
         raise NotImplementedError
 
@@ -461,15 +474,22 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
         elif config["model_config"]["mode"] == 'maniskill-pushcube':
             if tokens > tokens_cnt:
                 tokens_cnt += tokens_cnt_step
-                if config["model_config"]["mode"] == 'maniskill-pushcube':
+                if tokens_cnt > 50_000_000:
+                    tokens_cnt_step = 4_000_000
+                elif tokens_cnt > 25_000_000:
+                    tokens_cnt_step = 4_000_000
+                if config["model_config"]["mode"] == 'maniskill-pushcube' and config["training_config"]["online_inference"]:
                     model.eval()
-                    video_logged = False
+                    logged_video_seeds = 0
+                    bad_video_logged = False
+                    medium_video_logged = False
+                    good_video_logged = False
                     with torch.no_grad():
-                        seeds = np.arange(0, 100).tolist()[::10]
+                        seeds = np.arange(0, 100).tolist()[::5]
+                        # seeds = [123, 231, 321, 777, 888]
                         total_rew_mm = 0
                         cnt = 1
                         for ret in [config["online_inference_config"]["desired_return_1"]]:
-                            attn_map_received = False
                             returns = []
                             ts = []
 
@@ -481,54 +501,63 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                                                  "success_at_end": []}
 
                             for i in range(len(seeds)):
-                                episode_return, act_list, t, _, _, attn_map, frames, eval_metrics = get_returns_ManiSkill(model=model, ret=ret, seed=seeds[i], 
-                                                                                        episode_timeout=episode_timeout, 
-                                                                                        context_length=config["training_config"]["context_length"], 
-                                                                                        device=device, act_dim=config["model_config"]["ACTION_DIM"], 
-                                                                                        config=config,
-                                                                                        mean=None,
-                                                                                        std=None,
-                                                                                        use_argmax=config["online_inference_config"]["use_argmax"],
-                                                                                        create_video=False)
+                                try:
+                                    episode_return, _, t, _, _, _, _, eval_metrics = get_returns_ManiSkill(model=model, ret=ret, seed=seeds[i], 
+                                                                                            episode_timeout=episode_timeout, 
+                                                                                            context_length=config["training_config"]["context_length"], 
+                                                                                            device=device, act_dim=config["model_config"]["ACTION_DIM"], 
+                                                                                            config=config,
+                                                                                            mean=None,
+                                                                                            std=None,
+                                                                                            use_argmax=config["online_inference_config"]["use_argmax"],
+                                                                                            create_video=False)
 
-                                returns.append(episode_return)
-                                ts.append(t)
+                                    returns.append(episode_return)
+                                    ts.append(t)
 
-                                for k, v in eval_metrics.items():
-                                    mean = torch.stack(v).float().mean().item()
-                                    # if logger is not None:
-                                    #     logger.add_scalar(f"eval/{k}", mean, global_step)
-                                    metrics_maniskill[k].append(mean)
+                                    time.sleep(0.1)
+                                    torch.cuda.empty_cache()
+                                    
 
-                                total_rew_mm += episode_return
-                                curr_mean_ret = total_rew_mm / cnt
-                                cnt += 1
+                                    for k, v in eval_metrics.items():
+                                        if v:
+                                            mean = torch.stack(v).float().mean().item()
+                                            metrics_maniskill[k].append(mean)
 
-                                pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+                                    total_rew_mm += episode_return
+                                    curr_mean_ret = total_rew_mm / max(cnt, 1)
+                                    cnt += 1
+                                    eval_output_dir = f"ManiSkill/val_videos/{config['model_mode']}/{config['text_description']}"
+                                    if logged_video_seeds < 3:
+                                        video_path = f"{eval_output_dir}/0.mp4"
+                                        wandb.log({f"episode_video_{logged_video_seeds}": wandb.Video(video_path)})
+                                        logged_video_seeds += 1
+
+                                    if not bad_video_logged and episode_return < 10:
+                                        video_path = f"{eval_output_dir}/0.mp4"
+                                        wandb.log({f"episode_video_bad": wandb.Video(video_path)})
+                                        bad_video_logged = True
+                                    elif not medium_video_logged and 20 <= episode_return < 30:
+                                        video_path = f"{eval_output_dir}/0.mp4"
+                                        wandb.log({f"episode_video_medium": wandb.Video(video_path)})
+                                        medium_video_logged = True
+                                    elif not good_video_logged and episode_return >= 40:
+                                        video_path = f"{eval_output_dir}/0.mp4"
+                                        wandb.log({f"episode_video_good": wandb.Video(video_path)})
+                                        good_video_logged = True
+
+                                    pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+                                except Exception as e:
+                                    print(f"Error during evaluation of seed {seeds[i]}: {str(e)}")
+                                    continue
 
 
                             for k, v in metrics_maniskill.items():
                                 metrics_maniskill[k] = np.mean(v)
-                            
-                            # returns_mean = np.mean(returns)
-                            # returns_max = np.max(returns)
-                            # lifetime_mean = np.mean(ts)
-
                             if wwandb:
-                                # wandb.log({f"LifeTimeMean_{ret}":   lifetime_mean,
-                                #            f"ReturnsMax_{ret}":     returns_max,
-                                #            f"ReturnsMean_{ret}":    returns_mean})
-
                                 for k, v in metrics_maniskill.items():
                                     wandb.log({f"eval/eval_{k}_mean_{ret}": v})
-
-                                eval_output_dir = "ManiSkill/rate_val"
-                                video_path = f"{eval_output_dir}/0.mp4"
-                                wandb.log({"episode_video": wandb.Video(video_path)})
                             elif wcomet:
-                                # experiment.log_metrics({f"LifeTimeMean_{ret}":   lifetime_mean,
-                                #            f"ReturnsMax_{ret}":     returns_max,
-                                #            f"ReturnsMean_{ret}":    returns_mean}, step=it_counter)
                                 for k, v in metrics_maniskill.items():
                                     experiment.log_metrics({f"eval/eval_{k}_mean_{ret}": v}, step=it_counter)
                                 
