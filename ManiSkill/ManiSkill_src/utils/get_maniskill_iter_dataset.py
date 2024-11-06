@@ -83,8 +83,8 @@ class ManiSkillIterDataset(Dataset):
         new_folder = os.path.join(parent_dir, os.path.basename(self.directory.rstrip('/')) + "_" + "single_h5/")
         self.new_folder = new_folder
         if os.path.exists(new_folder):
-            for file_path in tqdm(os.listdir(new_folder)):
-                if file_path.endswith('.npz'):
+            for idx, file_path in tqdm(enumerate(os.listdir(new_folder))):
+                if file_path.endswith('.npz'):# and idx % 2 == 0:
                     self.filtered_list_npz.append(file_path)
         else:
             raise FileNotFoundError(f"Directory {new_folder} does not exist")

@@ -6,7 +6,7 @@ import comet_ml
 import argparse
 import yaml
 # from torch import multiprocessing
-import torch.multiprocessing as mp
+# import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
 # try:
 #     multiprocessing.set_start_method('spawn')
@@ -24,8 +24,8 @@ from VizDoom.VizDoom_src.train import train
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro_maniskill
 from ManiSkill.ManiSkill_src.utils import ManiSkillIterDataset
 
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker:.*")
+# import warnings
+# warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker:.*")
 
 
 # os.environ["MKL_NUM_THREADS"] = "1" 
@@ -61,6 +61,9 @@ def create_args():
     return parser
 
 if __name__ == '__main__':
+    import multiprocessing as mp
+    mp.set_start_method("spawn")
+
     
     get_intro_maniskill()
     
