@@ -28,9 +28,9 @@ from ManiSkill.ManiSkill_src.utils import ManiSkillIterDataset
 # warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker:.*")
 
 
-# os.environ["MKL_NUM_THREADS"] = "1" 
-# os.environ["NUMEXPR_NUM_THREADS"] = "1"  
-# os.environ["OMP_NUM_THREADS"] = "1" 
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1"  
+os.environ["OMP_NUM_THREADS"] = "1" 
 
 
 # with open("wandb_config.yaml") as f:
@@ -61,8 +61,8 @@ def create_args():
     return parser
 
 if __name__ == '__main__':
-    import multiprocessing as mp
-    mp.set_start_method("spawn")
+    # import multiprocessing as mp
+    # mp.set_start_method("spawn")
 
     
     get_intro_maniskill()
@@ -199,9 +199,9 @@ if __name__ == '__main__':
         train_dataloader = DataLoader(train_dataset, 
                                      batch_size=config["training_config"]["batch_size"], 
                                      shuffle=True, 
-                                     num_workers=1,
-                                     persistent_workers=True,
-                                     pin_memory=True) # * if process die again, try to set persistent_workers=True or num_workers=0
+                                     num_workers=1)
+                                    #  persistent_workers=True,
+                                    #  pin_memory=True) # * if process die again, try to set persistent_workers=True or num_workers=0
 
 
         print(f"Train: {len(train_dataloader) * config['training_config']['batch_size']} trajectories (first {max_length} steps)")

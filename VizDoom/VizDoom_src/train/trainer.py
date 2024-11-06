@@ -24,9 +24,6 @@ from RATE_GTrXL import mem_transformer_v2_GTrXL
 # from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
 # from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
 
-
-import threading
-
 # import warnings
 # warnings.filterwarnings('ignore')
 import torch.nn as nn
