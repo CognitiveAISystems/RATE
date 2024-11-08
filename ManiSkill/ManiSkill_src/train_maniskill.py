@@ -58,6 +58,7 @@ def create_args():
     parser.add_argument('--mrv_act',        type=str, default='relu',  help='["no_act", "relu", "leaky_relu", "elu", "tanh"]')
     parser.add_argument('--skip_dec_ffn',   action='store_true',       help='Skip Feed Forward Network (FFN) in Decoder if set')
     parser.add_argument('--h5_to_npz',      action='store_true',       help='Convert .h5 files to .npz files if set. Do it only once at the beginning!')
+    parser.add_argument('--sparse_reward',  action='store_true',       help='Use sparse reward if set')
     return parser
 
 if __name__ == '__main__':
@@ -80,11 +81,12 @@ if __name__ == '__main__':
     mrv_act = args.mrv_act
     skip_dec_ffn = args.skip_dec_ffn
     h5_to_npz = args.h5_to_npz
-
+    sparse_reward = args.sparse_reward
     config["model_mode"] = model_mode
     config["arctitecture_mode"] = arch_mode
     config["text_description"] = TEXT_DESCRIPTION
     config['model_config']['skip_dec_ffn'] = skip_dec_ffn
+    config["data_config"]["sparse_reward"] = sparse_reward
 
     for RUN in range(start_seed, end_seed+1):
         set_seed(RUN)
@@ -194,6 +196,7 @@ if __name__ == '__main__':
                                             gamma=config["data_config"]["gamma"], 
                                             max_length=max_length, 
                                             normalize=config["data_config"]["normalize"],
+                                            sparse_reward=config["data_config"]["sparse_reward"],
                                             h5_to_npz=h5_to_npz)
 
         train_dataloader = DataLoader(train_dataset, 

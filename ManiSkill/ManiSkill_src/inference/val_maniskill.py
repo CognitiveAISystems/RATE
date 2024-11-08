@@ -78,7 +78,8 @@ def sample(
     )
 
 
-def get_returns_ManiSkill(env, model, ret, seed, episode_timeout, context_length, device, act_dim, config, mean, std, use_argmax=False, create_video=False):
+def get_returns_ManiSkill(env, model, ret, seed, episode_timeout, context_length, device, act_dim, config, mean, std, 
+                          use_argmax=False, create_video=False, sparse_reward=False):
     # env = None
     # device = torch.device("cpu")
     model.to(device)
@@ -227,6 +228,8 @@ def get_returns_ManiSkill(env, model, ret, seed, episode_timeout, context_length
         act_list.append(act)
         # print(act.device)
         state, reward, terminated, truncated, eval_infos = env.step(act) # state [H, W, C], need [C, H, W]
+        if sparse_reward:
+            reward = (reward==1).to(torch.float32)
         # print(reward.device, terminated.device, truncated.device)
         done = torch.logical_or(terminated, truncated).item()
         if "final_info" in eval_infos:

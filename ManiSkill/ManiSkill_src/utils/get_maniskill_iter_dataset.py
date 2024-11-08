@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 
 class ManiSkillIterDataset(Dataset):
-    def __init__(self, directory, gamma, max_length, normalize, h5_to_npz=False):
+    def __init__(self, directory, gamma, max_length, normalize, sparse_reward=False, h5_to_npz=False):
         """_summary_
 
         Args:
@@ -33,6 +33,7 @@ class ManiSkillIterDataset(Dataset):
         self.gamma = gamma
         self.max_length = max_length
         self.normalize = normalize
+        self.sparse_reward = sparse_reward
 
         if self.h5_to_npz:
             self.filtered_list_h5 = []
@@ -135,6 +136,8 @@ class ManiSkillIterDataset(Dataset):
             s = data['o'].copy()
             a = data['a'].copy()
             r = data['r'].copy()
+            if self.sparse_reward:
+                r[r != 1] = 0
             d = data['d'].copy()
 
         s = torch.from_numpy(s).float().permute(0, 3, 1, 2)

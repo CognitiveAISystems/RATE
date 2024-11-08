@@ -5,7 +5,8 @@ from tqdm import tqdm
 import math
 # import cv2
 import time
-
+import glob
+import os
 # import os
 # import sys
 # current_dir = os.path.dirname(__file__)
@@ -528,7 +529,8 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                                                                                             mean=None,
                                                                                             std=None,
                                                                                             use_argmax=config["online_inference_config"]["use_argmax"],
-                                                                                            create_video=False)
+                                                                                            create_video=False,
+                                                                                            sparse_reward=config["data_config"]["sparse_reward"])
 
                                     model.to(device)
                                     returns.append(episode_return)
@@ -547,22 +549,22 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                                     curr_mean_ret = total_rew_mm / max(cnt, 1)
                                     cnt += 1
                                     eval_output_dir = f"ManiSkill/val_videos/{config['model_mode']}/{config['text_description']}"
+                                    video_files = glob.glob(os.path.join(eval_output_dir, "*.mp4"))
+                                    if video_files:
+                                        latest_video = max(video_files, key=os.path.getctime)
+
                                     if logged_video_seeds < 3:
-                                        video_path = f"{eval_output_dir}/0.mp4"
-                                        wandb.log({f"episode_video_{logged_video_seeds}": wandb.Video(video_path)})
+                                        wandb.log({f"episode_video_{logged_video_seeds}": wandb.Video(latest_video)})
                                         logged_video_seeds += 1
 
                                     if not bad_video_logged and episode_return < 10:
-                                        video_path = f"{eval_output_dir}/0.mp4"
-                                        wandb.log({f"episode_video_bad": wandb.Video(video_path)})
+                                        wandb.log({f"episode_video_bad": wandb.Video(latest_video)})
                                         bad_video_logged = True
                                     elif not medium_video_logged and 20 <= episode_return < 30:
-                                        video_path = f"{eval_output_dir}/0.mp4"
-                                        wandb.log({f"episode_video_medium": wandb.Video(video_path)})
+                                        wandb.log({f"episode_video_medium": wandb.Video(latest_video)})
                                         medium_video_logged = True
                                     elif not good_video_logged and episode_return >= 40:
-                                        video_path = f"{eval_output_dir}/0.mp4"
-                                        wandb.log({f"episode_video_good": wandb.Video(video_path)})
+                                        wandb.log({f"episode_video_good": wandb.Video(latest_video)})
                                         good_video_logged = True
 
                                     pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
