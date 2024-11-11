@@ -209,7 +209,7 @@ class Thimble(BaseEnv):
             # ! MUG-1
             xyz = torch.zeros((b, 3))
             xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
-            xyz[:, 0] += 0.3 # 0.15
+            xyz[:, 0] += 0.25 # 0.15
             xyz[:, 2] = self.object_zs[env_idx]
             q = torch.tensor([0, 1, 2, 0]).repeat(b, 1)
 
