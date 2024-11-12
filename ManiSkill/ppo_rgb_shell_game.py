@@ -366,9 +366,12 @@ if __name__ == "__main__":
 
     if args.env_id == "ShellGamePush-v1":
         from shell_game_push import ShellGamePush, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper
+    elif args.env_id == "ShellGamePush-v2":
+        from shell_game_push import ShellGamePush_v2 as ShellGamePush, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper
     elif args.env_id == "ShellGamePick-v1":
-        from shell_game_pick import ShellGamePick, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper
-
+        from shell_game_pick import ShellGamePick, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper 
+    elif args.env_id == "ShellGamePick-v2":
+        from shell_game_pick import ShellGamePick_v2 as ShellGamePick, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
