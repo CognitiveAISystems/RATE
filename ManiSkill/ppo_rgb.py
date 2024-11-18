@@ -201,10 +201,13 @@ class NatureCNN(nn.Module):
         self.out_features += feature_size
 
         if "state" in sample_obs:
+            print(f"state in sample_obs")
             # for state data we simply pass it through a single linear layer
             state_size = sample_obs["state"].shape[-1]
             extractors["state"] = nn.Linear(state_size, 256)
             self.out_features += 256
+        else:
+            print(f"state not in sample_obs")
 
         self.extractors = nn.ModuleDict(extractors)
 

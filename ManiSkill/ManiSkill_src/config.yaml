@@ -17,15 +17,15 @@ training_config:
   warmup_steps: 10000  # 100
   final_tokens: 10000000
   grad_norm_clip: 1.0 # 1.0
-  epochs: 100 #250
-  ckpt_epoch: 8 # 2
+  epochs: 40 #100
+  ckpt_epoch: 2 # 2
   use_erl_stop: False
   # inference during training
   online_inference: True
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
-  context_length: 15 # if RATE/GRATE: L = L, if DT: L = sections * L
+  context_length: 16 # if RATE/GRATE: L = L, if DT: L = sections * L
   sections: 3        # if RATE/GRATE: S = S, if DT: S = 1
 
 
@@ -42,7 +42,7 @@ model_config:
   d_inner: 128 # 128 # > d_model
   dropout: 0.2 # 0.2
   dropatt: 0.05 # 0.05
-  mem_len: 165 # (3*K + 2*nmt)*N
+  mem_len: 174 # (3*K + 2*nmt)*N = 174
   ext_len: 0
   tie_weight: False
   num_mem_tokens: 5 # 5 d_head * nmt = diff params
@@ -52,5 +52,5 @@ model_config:
 
 online_inference_config:
   use_argmax: False # False
-  episode_timeout: 50 # 2100
-  desired_return_1: 1.0 # 56.5
+  episode_timeout: 50 # 50
+  desired_return_1: 44.7 # 44.7 -- mean sum of rewards

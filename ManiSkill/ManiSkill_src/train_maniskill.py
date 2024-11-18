@@ -5,7 +5,13 @@ import wandb
 import comet_ml
 import argparse
 import yaml
+# from torch import multiprocessing
+# import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
+# try:
+#     multiprocessing.set_start_method('spawn')
+# except RuntimeError:
+#     pass
 
 import os
 import sys
@@ -18,9 +24,14 @@ from VizDoom.VizDoom_src.train import train
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro_maniskill
 from ManiSkill.ManiSkill_src.utils import ManiSkillIterDataset
 
+# import warnings
+# warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker:.*")
+
+
 os.environ["MKL_NUM_THREADS"] = "1" 
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  
 os.environ["OMP_NUM_THREADS"] = "1" 
+
 
 # with open("wandb_config.yaml") as f:
 #     wandb_config = yaml.load(f, Loader=yaml.FullLoader)
@@ -42,14 +53,19 @@ def create_args():
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
     parser.add_argument('--nmt',            type=int, default=5,       help='')
-    parser.add_argument('--mem_len',        type=int, default=165,       help='')
+    parser.add_argument('--mem_len',        type=int, default=165,     help='')
     parser.add_argument('--n_head_ca',      type=int, default=2,       help='')
     parser.add_argument('--mrv_act',        type=str, default='relu',  help='["no_act", "relu", "leaky_relu", "elu", "tanh"]')
     parser.add_argument('--skip_dec_ffn',   action='store_true',       help='Skip Feed Forward Network (FFN) in Decoder if set')
-
+    parser.add_argument('--h5_to_npz',      action='store_true',       help='Convert .h5 files to .npz files if set. Do it only once at the beginning!')
+    parser.add_argument('--sparse_reward',  action='store_true',       help='Use sparse reward if set')
     return parser
 
 if __name__ == '__main__':
+    # import multiprocessing as mp
+    # mp.set_start_method("spawn")
+
+    
     get_intro_maniskill()
     
     args = create_args().parse_args()
@@ -64,11 +80,13 @@ if __name__ == '__main__':
     n_head_ca = args.n_head_ca
     mrv_act = args.mrv_act
     skip_dec_ffn = args.skip_dec_ffn
-
+    h5_to_npz = args.h5_to_npz
+    sparse_reward = args.sparse_reward
     config["model_mode"] = model_mode
     config["arctitecture_mode"] = arch_mode
     config["text_description"] = TEXT_DESCRIPTION
     config['model_config']['skip_dec_ffn'] = skip_dec_ffn
+    config["data_config"]["sparse_reward"] = sparse_reward
 
     for RUN in range(start_seed, end_seed+1):
         set_seed(RUN)
@@ -177,12 +195,17 @@ if __name__ == '__main__':
         train_dataset = ManiSkillIterDataset(path_to_splitted_dataset, 
                                             gamma=config["data_config"]["gamma"], 
                                             max_length=max_length, 
-                                            normalize=config["data_config"]["normalize"])
-        
+                                            normalize=config["data_config"]["normalize"],
+                                            sparse_reward=config["data_config"]["sparse_reward"],
+                                            h5_to_npz=h5_to_npz)
+
         train_dataloader = DataLoader(train_dataset, 
                                      batch_size=config["training_config"]["batch_size"], 
                                      shuffle=True, 
-                                     num_workers=8)
+                                     num_workers=1)
+                                    #  persistent_workers=True,
+                                    #  pin_memory=True) # * if process die again, try to set persistent_workers=True or num_workers=0
+
 
         print(f"Train: {len(train_dataloader) * config['training_config']['batch_size']} trajectories (first {max_length} steps)")
 
@@ -201,7 +224,9 @@ if __name__ == '__main__':
         #==============================================================================================================================#
         wandb_step = 0
         model = train(ckpt_path, config, train_dataloader, mean, std, max_segments, experiment)
-                
+            
+        torch.cuda.empty_cache()
+
         if config["wandb_config"]["wwandb"]:
             run.finish()
         elif config['wandb_config']['wcomet']:

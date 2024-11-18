@@ -130,7 +130,7 @@ class MemTransformerLM(nn.Module):
                                                nn.Conv2d(64, 64, 3, stride=1, padding=0), 
                                                nn.ReLU(),
                                                nn.Flatten(), 
-                                               nn.Linear(9216, d_embed), 
+                                               nn.Linear(9216, d_embed),
                                                nn.Tanh())
             self.action_embeddings = nn.Linear(self.ACTION_DIM, d_embed)
             self.ret_emb = nn.Linear(1, d_embed)
