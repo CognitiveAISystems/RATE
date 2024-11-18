@@ -1,0 +1,28 @@
+program: recurrent_baselines/LSTM_GRU/tmaze/lstm_train_tmaze.py
+method: bayes
+metric:
+  name: Success_rate
+  goal: maximize
+parameters:
+  model_config.num_layers:
+    values: [1, 2, 3, 4]
+  model_config.hidden_size:
+    values: [32, 64, 128, 256, 512]
+  model_config.dropout:
+    values: [0, 0.05, 0.1, 0.2, 0.5]
+
+early_terminate:
+  type: hyperband 
+  min_iter: 3
+
+# python recurrent_baselines/LSTM_GRU/tmaze/sweeps_K_30/run_sweep_lstm.py
+
+# command:
+#   - ${env}
+#   - ${interpreter}
+#   - ${program}
+#   - --model_mode=LSTM
+#   - --curr=false
+#   - --ckpt_folder=sweep_lstm
+#   - --max_n_final=3
+#   - --text=sweep_lstm
