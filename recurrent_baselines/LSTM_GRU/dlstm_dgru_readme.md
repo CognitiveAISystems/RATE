@@ -11,7 +11,6 @@ By default, we consider 3 segments and a context length of 30 (K_{eff} = 90) (se
 To run training, use the following commands:
 ```bash
 python3 recurrent_baselines/LSTM_GRU/tmaze/lstm_train_tmaze.py --model_mode 'LSTM' --curr 'false' --ckpt_folder 'LSTM_no_curr_max_3' --max_n_final 3 --text 'LSTM_no_curr'
-
 python3 recurrent_baselines/LSTM_GRU/tmaze/lstm_train_tmaze.py --model_mode 'GRU' --curr 'false' --ckpt_folder 'GRU_no_curr_max_3' --max_n_final 3 --text 'GRU_no_curr'
 ```
 
@@ -25,4 +24,17 @@ python3 recurrent_baselines/LSTM_GRU/tmaze/sweeps_K_30/run_sweep_gru.py
 
 python3 recurrent_baselines/LSTM_GRU/tmaze/sweeps_K_90/run_sweep_lstm.py
 python3 recurrent_baselines/LSTM_GRU/tmaze/sweeps_K_90/run_sweep_gru.py
+```
+## ViZDoom-Two-Colors
+
+Run training:
+```bash
+python3 recurrent_baselines/LSTM_GRU/vizdoom/lstm_train_vizdoom.py --model_mode 'LSTM' --ckpt_folder 'LSTM' --text 'LSTM'
+python3 recurrent_baselines/LSTM_GRU/vizdoom/lstm_train_vizdoom.py --model_mode 'GRU' --ckpt_folder 'GRU' --text 'GRU'
+```
+
+Run sweeps:
+```bash
+python3 recurrent_baselines/LSTM_GRU/vizdoom/run_sweep_lstm.py
+python3 recurrent_baselines/LSTM_GRU/vizdoom/run_sweep_gru.py
 ```
