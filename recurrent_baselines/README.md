@@ -1,6 +1,6 @@
-# Recurrent Neural Network Baselines
+# RNN and SSM Baselines
 
-This repository contains implementations of various recurrent neural network architectures for reinforcement learning tasks, specifically tested on T-Maze and ViZDoom-Two-Colors environments.
+This directory contains implementations of various RNN and SSM architectures specifically tested on T-Maze and ViZDoom-Two-Colors memory-intensive environments for comparison with our RATE model.
 
 ## Implemented Architectures
 
