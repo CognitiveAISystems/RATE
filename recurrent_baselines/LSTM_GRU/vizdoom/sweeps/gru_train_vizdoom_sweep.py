@@ -72,7 +72,7 @@ if __name__ == '__main__':
             config["training_config"]["sections"] = 1
             max_length = config["training_config"]["context_length"]
             config['model_config']['arch_mode'] = config['model_mode'].lower()
-            config['model_config']['max_length'] = 1#config["training_config"]["context_length"]
+            config['model_config']['max_length'] = config["training_config"]["context_length"]
 
         print(f"Selected Model: {config['model_mode']}")  
 
@@ -118,8 +118,8 @@ if __name__ == '__main__':
         #================================================== DATALOADERS CREATION ======================================================#
         
         # * IF USE ITER DATASET (5K TRAJECTORIES)
-        # path_to_splitted_dataset = 'VizDoom/VizDoom_data/iterative_data/'
-        path_to_splitted_dataset = '../../RATE/VizDoom/VizDoom_data/iterative_data/'
+        path_to_splitted_dataset = 'VizDoom/VizDoom_data/iterative_data/'
+        # path_to_splitted_dataset = '../../RATE/VizDoom/VizDoom_data/iterative_data/'
         train_dataset = ViZDoomIterDataset(path_to_splitted_dataset, 
                                          gamma=config["data_config"]["gamma"], 
                                          max_length=max_length, 

@@ -1,0 +1,9 @@
+pyyaml
+opencv-python
+numpy==1.26
+tqdm
+torch==2.1.0
+tensorflow==2.15.0
+einops
+causal-conv1d==1.2.0.post2
+mamba-ssm==1.2.0.post1

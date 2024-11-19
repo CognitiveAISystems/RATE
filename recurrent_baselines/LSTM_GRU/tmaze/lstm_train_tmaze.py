@@ -26,7 +26,7 @@ with open("wandb_config.yaml") as f:
     wandb_config = yaml.load(f, Loader=yaml.FullLoader)
 os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 
-with open("recurrent_baselines/LSTM_GRU/tmaze/config_lstm.yaml") as f:
+with open("recurrent_baselines/LSTM_GRU/tmaze/config_lstm_K_90.yaml") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
     
 def create_args():

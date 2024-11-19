@@ -184,7 +184,7 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
                             return returns, ts
 
                         total_returns, total_ts = [], []
-                        SKIP_RETURN = 10
+                        SKIP_RETURN = 4
 
                         # RED PILLAR
                         seeds_red = reds[::SKIP_RETURN]
