@@ -54,6 +54,8 @@ def create_args():
     parser.add_argument('--n_layer',        type=int, default=8,       help='Number of layers')
     parser.add_argument('--n_head',         type=int, default=10,      help='Number of heads')
     parser.add_argument('--d_model',        type=int, default=64,      help='Model dimension (embeddings)')
+    parser.add_argument('--context_length', type=int, default=30,      help='Context length')
+    parser.add_argument('--sections',       type=int, default=3,       help='Number of sections such that K_eff = sections * context_length')
 
     return parser
 
@@ -79,6 +81,11 @@ if __name__ == '__main__':
     n_layer = args.n_layer
     n_head = args.n_head
     d_model = args.d_model
+    context_length = args.context_length
+    sections = args.sections
+
+    config["training_config"]["context_length"] = context_length
+    config["training_config"]["sections"] = sections
 
     SEGMENT_LENGTH = config["training_config"]["context_length"]
 
