@@ -53,7 +53,7 @@ def create_args():
 
     parser.add_argument('--n_layer',        type=int, default=8,       help='Number of layers')
     parser.add_argument('--n_head',         type=int, default=10,      help='Number of heads')
-    parser.add_argument('--d_model',        type=int, default=64,      help='Model dimension')
+    parser.add_argument('--d_model',        type=int, default=64,      help='Model dimension (embeddings)')
 
     return parser
 
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     config["training_config"]["curriculum"] = curr
     config["arctitecture_mode"] = arch_mode
     config['model_config']['skip_dec_ffn'] = skip_dec_ffn
-    
+
     config['model_config']['n_layer'] = n_layer
     config['model_config']['n_head'] = n_head
     config['model_config']['d_model'] = d_model
