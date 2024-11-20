@@ -17,7 +17,8 @@ sys.path.append(parent_dir)
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro, TMaze_data_generator, CombinedDataLoader
 from TMaze_new.TMaze_new_src.train import train
 
-# python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'true' --ckpt_folder 'RATE_max_3' --max_n_final 3 --text 'RATE_max_3'
+# python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'RATE_max_3' --max_n_final 3 --text 'RATE_max_3' --skip_dec_ffn
+# python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'SWEEP_TRANSFORMER/RATE_max_3' --max_n_final 3 --skip_dec_ffn --end_seed 5 --text 'SWEEP_TRANSFORMER/RATE_max_3'
 
 os.environ["MKL_NUM_THREADS"] = "1" 
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  
@@ -39,16 +40,20 @@ def create_args():
     parser.add_argument('--min_n_final',    type=int, default=1,       help='Start number of considered segments during training')
     parser.add_argument('--max_n_final',    type=int, default=3,       help='End number of considered segments during training')
     parser.add_argument('--start_seed',     type=int, default=1,       help='Start seed')
-    parser.add_argument('--end_seed',       type=int, default=10,       help='End seed')
-    parser.add_argument('--curr',           type=str, default='true',  help='Curriculum mode. If "true", then curriculum will be used during training')
+    parser.add_argument('--end_seed',       type=int, default=10,      help='End seed')
+    parser.add_argument('--curr',           type=str, default='false', help='Curriculum mode. If "true", then curriculum will be used during training')
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
-    parser.add_argument('--nmt',            type=int, default=5,       help='')
-    parser.add_argument('--mem_len',        type=int, default=2,       help='')
-    parser.add_argument('--n_head_ca',      type=int, default=2,       help='')
+    parser.add_argument('--nmt',            type=int, default=5,       help='Number of memory tokens')
+    parser.add_argument('--mem_len',        type=int, default=0,       help='Number of cahched previous tokens')
+    parser.add_argument('--n_head_ca',      type=int, default=4,       help='Number of heads in MRV\'s cross attention')
     parser.add_argument('--mrv_act',        type=str, default='relu',  help='["no_act", "relu", "leaky_relu", "elu", "tanh"]')
     parser.add_argument('--skip_dec_ffn',   action='store_true',       help='Skip Feed Forward Network (FFN) in Decoder if set')
+
+    parser.add_argument('--n_layer',        type=int, default=8,       help='Number of layers')
+    parser.add_argument('--n_head',         type=int, default=10,      help='Number of heads')
+    parser.add_argument('--d_model',        type=int, default=64,      help='Model dimension')
 
     return parser
 
@@ -71,6 +76,9 @@ if __name__ == '__main__':
     n_head_ca = args.n_head_ca
     mrv_act = args.mrv_act
     skip_dec_ffn = args.skip_dec_ffn
+    n_layer = args.n_layer
+    n_head = args.n_head
+    d_model = args.d_model
 
     SEGMENT_LENGTH = config["training_config"]["context_length"]
 
@@ -82,6 +90,12 @@ if __name__ == '__main__':
     config["training_config"]["curriculum"] = curr
     config["arctitecture_mode"] = arch_mode
     config['model_config']['skip_dec_ffn'] = skip_dec_ffn
+    
+    config['model_config']['n_layer'] = n_layer
+    config['model_config']['n_head'] = n_head
+    config['model_config']['d_model'] = d_model
+    config['model_config']['d_head'] = d_model
+    config['model_config']['d_inner'] = d_model
 
     for RUN in range(start_seed, end_seed+1):
         set_seed(RUN)

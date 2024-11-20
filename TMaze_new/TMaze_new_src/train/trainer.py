@@ -276,7 +276,8 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
 
         # ! INFERENCE AT ALL LENGHTS AT LAST EPOCH !!!
         if epoch == config["training_config"]["epochs"] - 1 and segments_count == max_n_final:
-            for _segments in [1, 2, 3, 5, 7, 9, 12, 16, 20, 25, 30]:
+            # for _segments in [1, 2, 3, 5, 7, 9, 12, 16, 20, 25, 30]:
+            for _segments in [1, 2, 3, 5, 9, 16, 30]:
                 _episode_timeout = 30*_segments
                 _corridor_length = 30*_segments - 2
                 if config["training_config"]["last_inference"]:

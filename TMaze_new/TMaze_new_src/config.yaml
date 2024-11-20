@@ -1,7 +1,7 @@
 wandb_config:
     project_name: "v3-RATE-TMaze" #"CA-RATE_TMaze"
-    wwandb: False
-    wcomet: True
+    wwandb: True
+    wcomet: False
 
 data_config:
   # noise augmentation of data
@@ -30,7 +30,7 @@ training_config:
   coef: 0.0
   # inference during training
   online_inference: True
-  last_inference: False
+  last_inference: True
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
