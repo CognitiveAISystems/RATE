@@ -44,7 +44,7 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     done = True
     Flag = 0
     frames = []
-    HISTORY_LEN = context_length
+    HISTORY_LEN = 30 # context_length
     
     rews = []
     attentions = []

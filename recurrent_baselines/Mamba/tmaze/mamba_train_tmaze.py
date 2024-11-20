@@ -10,7 +10,6 @@ import sys
 current_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(current_dir)
 parent_dir = os.path.dirname(parent_dir)
-parent_dir = os.path.dirname(parent_dir)
 sys.path.append(parent_dir)
 
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro, TMaze_data_generator, CombinedDataLoader
@@ -26,7 +25,7 @@ with open("wandb_config.yaml") as f:
     wandb_config = yaml.load(f, Loader=yaml.FullLoader)
 os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 
-with open("recurrent_baselines/Mamba/tmaze/config_mamba_K_90.yaml") as f:
+with open("decision_mamba/tmaze_mamba/config_mamba.yaml") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
     
 def create_args():
@@ -37,7 +36,7 @@ def create_args():
     parser.add_argument('--max_n_final',    type=int, default=3,       help='End number of considered segments during training')
     parser.add_argument('--start_seed',     type=int, default=1,       help='Start seed')
     parser.add_argument('--end_seed',       type=int, default=10,       help='End seed')
-    parser.add_argument('--curr',           type=str, default='false',  help='Curriculum mode. If "true", then curriculum will be used during training')
+    parser.add_argument('--curr',           type=str, default='true',  help='Curriculum mode. If "true", then curriculum will be used during training')
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
@@ -83,7 +82,7 @@ if __name__ == '__main__':
         name = f'{TEXT_DESCRIPTION}_{config["model_mode"]}_min_{min_n_final}_max_{max_n_final}_RUN_{RUN}_{date_time}'
         current_dir = os.getcwd()
         current_folder = os.path.basename(current_dir)
-        ckpt_path = f'../{current_folder}/recurrent_baselines/Mamba/tmaze/ckpt/{ckpt_folder}/{name}/'
+        ckpt_path = f'../{current_folder}/decision_mamba/tmaze_mamba/ckpt/{ckpt_folder}/{name}/'
         isExist = os.path.exists(ckpt_path)
         if not isExist:
             os.makedirs(ckpt_path)

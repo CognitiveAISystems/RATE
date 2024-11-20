@@ -3,8 +3,8 @@ import wandb
 from tqdm import tqdm
 import numpy as np
 
-from recurrent_baselines.Mamba.mingpt.model_tmaze import GPT, GPTConfig
-from recurrent_baselines.Mamba.tmaze import val_tmaze
+from decision_mamba.atari.mingpt.model_tmaze import GPT, GPTConfig
+from decision_mamba.tmaze_mamba import val_tmaze
 
 from TMaze_new.TMaze_new_src.utils import seeds_list
 import torch.nn as nn
@@ -14,14 +14,18 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     if model is None:
+        # model = GPT(**config['model_config'])
 
         mconf = GPTConfig(
             vocab_size=None,
             block_size=config['training_config']['context_length'],
             n_layer=config['model_config']['n_layer'],
+            # n_head=config['model_config']['n_head'],
             model_type=config['model_config']['model_type'],
             n_embd=config['model_config']['d_model'],
             token_mixer=config['model_config']['token_mixer'],
+            # window_size=config['model_config']['conv_window_size'],
+            # conv_proj=config['model_config']['conv_proj'],
             max_timestep=config['training_config']['context_length']-1,
             )
         model = GPT(mconf)
@@ -67,6 +71,8 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
             r1 = rtg[:,:,:][:, :, :].to(device).float() 
             
             with torch.set_grad_enabled(is_train):
+                optimizer.zero_grad()
+                # def forward(self, states, actions, targets=None, rtgs=None, timesteps=None):
                 logits, train_loss = model(states=x1, actions=y1, targets=y1, rtgs=r1, timesteps=timesteps.unsqueeze(-1).to(device))
 
                 if wwandb:
@@ -127,7 +133,7 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
         if wwandb:
             wandb.log({"segments_count": segments_count})
         
-        if epoch == config["training_config"]["epochs"] - 1:
+        if ((epoch + 1) % int(config["training_config"]["ckpt_epoch"])) == 0 or epoch == config["training_config"]["epochs"] - 1 or epoch == 0:
             if config["training_config"]["online_inference"]:
                 model.eval()
                 with torch.no_grad():
