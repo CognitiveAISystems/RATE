@@ -53,7 +53,7 @@ def create_args():
 
     parser.add_argument('--n_layer',        type=int, default=8,       help='Number of layers')
     parser.add_argument('--n_head',         type=int, default=10,      help='Number of heads')
-    parser.add_argument('--d_model',        type=int, default=64,      help='Model dimension') 
+    parser.add_argument('--d_model',        type=int, default=64,      help='Model dimension (embeddings)')
 
     return parser
 
