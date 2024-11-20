@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from RATE_GTrXL.utils import LogUniformSampler, sample_logits, ProjectedAdaptiveLogSoftmax
-from RATE_GTrXL.blocks import RelPartialLearnableDecoderLayer, PositionalEmbedding
+from RATE.utils import LogUniformSampler, sample_logits, ProjectedAdaptiveLogSoftmax
+from RATE.blocks import RelPartialLearnableDecoderLayer, PositionalEmbedding
 
 class MemTransformerLM(nn.Module):
     def __init__(self, STATE_DIM, 

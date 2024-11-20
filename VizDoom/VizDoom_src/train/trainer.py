@@ -17,7 +17,7 @@ import os
 # parent_dir = os.path.dirname(parent_dir)
 # sys.path.append(parent_dir)
 
-from RATE_GTrXL import mem_transformer_v2_GTrXL
+from RATE import mem_transformer_v2_GTrXL
 
 # from VizDoom.VizDoom_src.utils import z_normalize, inverse_z_normalize
 

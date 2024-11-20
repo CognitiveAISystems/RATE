@@ -3,7 +3,7 @@ import wandb
 from tqdm import tqdm
 import numpy as np
 
-from RATE_GTrXL import mem_transformer_v2_GTrXL
+from RATE import mem_transformer_v2_GTrXL
 from ActionAssociativeRetrieval.AAR_src.inference.val_aar import get_returns_AAR
 
 

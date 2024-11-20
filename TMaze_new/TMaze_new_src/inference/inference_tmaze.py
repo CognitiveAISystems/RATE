@@ -15,7 +15,7 @@ parent_dir = os.path.dirname(parent_dir)
 parent_dir = os.path.dirname(parent_dir)
 sys.path.append(parent_dir)
 
-from RATE_GTrXL import mem_transformer_v2_GTrXL
+from RATE import mem_transformer_v2_GTrXL
 from TMaze_new.TMaze_new_src.inference.val_tmaze import get_returns_TMaze
 from TMaze_new.TMaze_new_src.utils import seeds_list, get_intro2
 

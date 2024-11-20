@@ -3,7 +3,7 @@ import wandb
 from tqdm import tqdm
 import numpy as np
 
-from RATE_GTrXL import mem_transformer_v2_GTrXL
+from RATE import mem_transformer_v2_GTrXL
 
 from TMaze_new.TMaze_new_src.inference.val_tmaze import get_returns_TMaze
 from TMaze_new.TMaze_new_src.utils import seeds_list

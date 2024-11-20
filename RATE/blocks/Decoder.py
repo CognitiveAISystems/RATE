@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch.nn.modules.normalization import LayerNorm
 import torch.nn.functional as F
 
-from RATE_GTrXL.blocks.Attention import RelPartialLearnableMultiHeadAttn#, RelLearnableMultiHeadAttn #MultiHeadAttn
-from RATE_GTrXL.blocks.PositionwiseFF import PositionwiseFF
+from RATE.blocks.Attention import RelPartialLearnableMultiHeadAttn#, RelLearnableMultiHeadAttn #MultiHeadAttn
+from RATE.blocks.PositionwiseFF import PositionwiseFF
 
 ############################# GATED #####################
 '''

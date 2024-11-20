@@ -12,7 +12,7 @@ import gym
 import numpy as np
 import torch
 import comet_ml
-from RATE_GTrXL import mem_transformer_v2_GTrXL
+from RATE import mem_transformer_v2_GTrXL
 from tqdm import tqdm
 
 import argparse

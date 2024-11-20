@@ -4,7 +4,7 @@ import os
 import sys
 sys.path.insert(0, '../')
 sys.path.insert(0, './')
-from RATE_GTrXL import mem_transformer_v2_GTrXL
+from RATE import mem_transformer_v2_GTrXL
 
 import torch.nn as nn
 import sys
