@@ -3,28 +3,19 @@ import wandb
 from tqdm import tqdm
 import numpy as np
 
-from recurrent_baselines.Mamba.mingpt.model_tmaze import GPT, GPTConfig
-from recurrent_baselines.Mamba.tmaze import val_tmaze
-
+from recurrent_baselines.obs_only_LSTM_GRU import decision_lstm
+from recurrent_baselines.obs_only_LSTM_GRU.tmaze import val_tmaze
 from TMaze_new.TMaze_new_src.utils import seeds_list
 import torch.nn as nn
+
+torch.backends.cudnn.benchmark = True
 
 def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, segments_count, wandb_step, ckpt_path, config, train_dataloader, val_dataloader):
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     if model is None:
-
-        mconf = GPTConfig(
-            vocab_size=None,
-            block_size=config['training_config']['context_length'],
-            n_layer=config['model_config']['n_layer'],
-            model_type=config['model_config']['model_type'],
-            n_embd=config['model_config']['d_model'],
-            token_mixer=config['model_config']['token_mixer'],
-            max_timestep=config['training_config']['context_length']-1,
-            )
-        model = GPT(mconf)
+        model = decision_lstm.DecisionLSTM(**config['model_config'])
 
         wandb_step  = 0
         epochs_counter = 0
@@ -64,10 +55,16 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
 
             x1 = s[:, :, :].to(device)
             y1 = a[:, :, :].to(device).long()
-            r1 = rtg[:,:,:][:, :, :].to(device).float() 
+            r1 = rtg[:,:,:][:, :, :].to(device).float()
+
             
             with torch.set_grad_enabled(is_train):
-                logits, train_loss = model(states=x1, actions=y1, targets=y1, rtgs=r1, timesteps=timesteps.unsqueeze(-1).to(device))
+                model.training = True
+                logits = model(x1, y1, None, r1, None, None, wwandb=wwandb)
+                
+                logits = logits.reshape(-1, logits.size(-1))
+                target = y1.reshape(-1).long()
+                train_loss = criterion_all(logits, target)
 
                 if wwandb:
                     wandb.log({"train_loss": train_loss.item()})
@@ -88,6 +85,7 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
         
         # Val
         model.eval()
+        model.training = False
         is_train = False
         with torch.no_grad():
             for it, batch in enumerate(val_dataloader):        
@@ -99,7 +97,12 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
             
                 with torch.set_grad_enabled(is_train):
                     optimizer.zero_grad()
-                    logits, val_loss = model(states=x1, actions=y1, targets=y1, rtgs=r1, timesteps=timesteps.unsqueeze(-1).to(device))
+                    logits = model(x1, y1, None, r1, None, None)
+
+                    logits = logits.reshape(-1, logits.size(-1))
+                    target = y1.reshape(-1).long()
+                    val_loss = criterion_all(logits, target)
+
 
                     if wwandb:
                         wandb.log({"val_loss": val_loss.item()})

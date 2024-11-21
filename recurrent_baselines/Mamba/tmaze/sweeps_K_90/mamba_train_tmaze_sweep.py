@@ -11,6 +11,7 @@ current_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(current_dir)
 parent_dir = os.path.dirname(parent_dir)
 parent_dir = os.path.dirname(parent_dir)
+parent_dir = os.path.dirname(parent_dir)
 sys.path.append(parent_dir)
 
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro, TMaze_data_generator, CombinedDataLoader
@@ -36,7 +37,7 @@ def create_args():
     parser.add_argument('--min_n_final',    type=int, default=1,       help='Start number of considered segments during training')
     parser.add_argument('--max_n_final',    type=int, default=3,       help='End number of considered segments during training')
     parser.add_argument('--start_seed',     type=int, default=1,       help='Start seed')
-    parser.add_argument('--end_seed',       type=int, default=10,       help='End seed')
+    parser.add_argument('--end_seed',       type=int, default=1,       help='End seed')
     parser.add_argument('--curr',           type=str, default='false',  help='Curriculum mode. If "true", then curriculum will be used during training')
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
@@ -89,7 +90,14 @@ if __name__ == '__main__':
             os.makedirs(ckpt_path)
 
         if config["wandb_config"]["wwandb"]:
-            run = wandb.init(project=config['wandb_config']['project_name'], name=name, group=group, config=config, save_code=True, reinit=True) #entity="RATE"
+            # run = wandb.init(project=config['wandb_config']['project_name'], name=name, group=group, config=config, save_code=True, reinit=True) #entity="RATE"
+            run = wandb.init(project=config['wandb_config']['project_name'], 
+                config=config,
+                save_code=True,
+                reinit=True)
+            sweep_config = wandb.config
+            config["model_config"]["n_layer"] = sweep_config.get("model_config.n_layer", config["model_config"]["n_layer"])
+            config["model_config"]["d_model"] = sweep_config.get("model_config.d_model", config["model_config"]["d_model"])
 
         TMaze_data_generator(max_segments=config["training_config"]["max_segments"], multiplier=config["data_config"]["multiplier"], 
                              hint_steps=config["data_config"]["hint_steps"], desired_reward=config["data_config"]["desired_reward"], 

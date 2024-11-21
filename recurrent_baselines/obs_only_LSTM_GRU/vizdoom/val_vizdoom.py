@@ -65,36 +65,9 @@ env_args = {
     'visdom_ip':'http://10.0.0.1'                 
 }
 
-@torch.no_grad()
-def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, rtgs=None, timestep=None, mem_tokens=1, saved_context=None):
-    
-    model.eval()
-    for k in range(steps):
-        x_cond = x if x.size(1) <= block_size else x[:, -block_size:] # crop context if needed
-        if actions is not None:
-            actions = actions if actions.size(1) <= block_size else actions[:, -block_size:] # crop context if needed
-        rtgs = rtgs if rtgs.size(1) <= block_size else rtgs[:, -block_size:] # crop context if needed
-        if saved_context is not None:
-            results = model(x_cond, actions, rtgs,None, timestep, *saved_context, mem_tokens=mem_tokens)
-        else:
-            results = model(x_cond, actions, rtgs,None, timestep, mem_tokens=mem_tokens) 
-            
-        logits = results[0][0].detach()[:,-1,:]
-        mem_tokens = results[1]
-        memory = results[0][2:]
-        attn_map = model.attn_map
-        
-    return logits, mem_tokens, memory, attn_map
-
 def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, device, act_dim, config, mean, std, use_argmax=False, create_video=False):
     
     set_seed(seed)
-    
-    # * USE ONLY LAST MEM TOKEN:
-    use_only_last_mem_token = False
-    
-    # * ADD NOISE TO MEM TOKENS:
-    add_noise = False
 
     scale = 1
     max_ep_len = episode_timeout#* 3
@@ -113,15 +86,12 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
         no_backward_movement=True,
         seed=seed)
     
-    state0 = env.reset()
-    state = torch.tensor(state0['image']).float()
+    state = torch.tensor(env.reset()['image']).float()
     state = state.reshape(1, 1, state.shape[0], state.shape[1], state.shape[2])
-
-    
+   
     out_states = []
     out_states.append(state.cpu().numpy())
     done = True
-    frames = []
     HISTORY_LEN = context_length 
     
     rews = []
@@ -133,84 +103,31 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
     timesteps = torch.tensor(0, device=device, dtype=torch.long).reshape(1, 1)
     episode_return, episode_length = 0, 0
 
-    mem_tokens = model.mem_tokens.repeat(1, 1, 1).detach() if model.mem_tokens is not None else None
-    saved_context = None
+
+    # print(device, states.device)
     segment = 0
     prompt_steps = 0
     
     act_list= []
     memories = []
     
-    if use_only_last_mem_token:
-        switcher = False
-        saved_mem = None
-    
     for t in range(max_ep_len):
         actions = torch.cat([actions, torch.zeros((1, act_dim), device=device)], dim=0)
         rewards = torch.cat([rewards, torch.zeros(1, device=device)])
-        
-        if config["model_mode"] != 'DT' and config["model_mode"] != 'DTXL':
-            if actions.shape[0] > HISTORY_LEN:
-                segment+=1
-                
-                if prompt_steps==0:
-                    actions = actions[-1:,:]
-                    states = states[:, -1:, :, :, :]
-                    target_return = target_return[:,-1:]
-                    timesteps = timesteps[:, -1:]
-                else:
-                    actions = actions[-prompt_steps:,:]
-                    states = states[:, -prompt_steps:, :, :, :]
-                    target_return = target_return[:,-prompt_steps:]
-                    timesteps = timesteps[:, -prompt_steps:]
-                    
-                if t%(context_length)==0 and t>5:
-                    if use_only_last_mem_token:
-                        mem_tokens = saved_mem
-                    else:
-                        mem_tokens = new_mem
-                    
-                    saved_context = new_notes
-                    
-                    if create_video:
-                        out = torch.norm(mem_tokens).item() if mem_tokens is not None else None
-                        print(f't: {t}, NEW MEMORY: {out}')
-                    
-        else:
-            if actions.shape[0] > HISTORY_LEN:
-                segment+=1
-                
-                if prompt_steps==0:
-                    actions = actions[1:,:]
-                    states = states[:, 1:, :, :, :]
-                    target_return = target_return[:,1:]
-                    timesteps = timesteps[:, 1:]
-                else:
-                    actions = actions[-prompt_steps:,:]
-                    states = states[:, -prompt_steps:, :, :, :]
-                    target_return = target_return[:,-prompt_steps:]
-                    timesteps = timesteps[:, -prompt_steps:]
-                    
-                if t%(context_length)==0 and t>5: 
-                    if create_video:
-                        out = torch.norm(mem_tokens).item() if mem_tokens is not None else None
-                        print(f't: {t}, NEW MEMORY: {out}')
-                    mem_tokens = new_mem
-                    saved_context = new_notes
 
-        if t==0:
-            act_to_pass = None
-        else:
-            act_to_pass = actions.unsqueeze(0)[:, 1:, :]
-            if act_to_pass.shape[1] == 0:
-                act_to_pass = None 
-        
-        
-        if add_noise:
-            added_noise = torch.randn_like(mem_tokens)
-        else:
-            added_noise = torch.zeros_like(mem_tokens) if mem_tokens is not None else 0
-        
+        if actions.shape[0] > HISTORY_LEN:
+            segment+=1
+            if prompt_steps==0:
+                actions = actions[1:,:]
+                states = states[:, 1:, :, :, :]
+                target_return = target_return[:,1:]
+                timesteps = timesteps[:, 1:]
+            else:
+                actions = actions[-prompt_steps:,:]
+                states = states[:, -prompt_steps:, :, :, :]
+                target_return = target_return[:,-prompt_steps:]
+                timesteps = timesteps[:, -prompt_steps:]
+                
         if config["data_config"]["normalize"] == 2:
             b, l, c, h, w = states.shape
             states_norm = states.reshape(b*l, c, h, w)
@@ -220,28 +137,17 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
             states_norm = states / 255.0
         elif config["data_config"]["normalize"] == 0:
             states_norm = states
-
-        # try:
-        sampled_action, new_mem, new_notes, attn_map = sample(model=model,  
-                                                    x=states_norm,
-                                                    block_size=HISTORY_LEN, 
-                                                    steps=1, 
-                                                    sample=True, 
-                                                    actions=act_to_pass, 
-                                                    rtgs=target_return.unsqueeze(-1), 
-                                                    timestep=timesteps, 
-                                                    mem_tokens=mem_tokens,
-                                                    saved_context=saved_context)
-        # except:
-        #     pass
-
-        if use_only_last_mem_token:
-            if t > 0 and t % (context_length-1) == 0 and switcher == False:
-                switcher = True
-                saved_mem = new_mem
+        
+        # print(f"{t=}, {states_norm.shape=}, {actions.shape=}, {rewards.shape=}, {target_return.shape=}, {timesteps.shape=}")
+        model.max_length = None # HISTORY_LEN
+        sampled_action = model.get_action(
+                                            states=states_norm,
+                                            actions=actions.to(dtype=torch.float32),
+                                            rewards=rewards.to(dtype=torch.float32),
+                                            returns_to_go=target_return.unsqueeze(-1),
+                                            timesteps=timesteps.to(dtype=torch.long),
+                                        )
             
-        if new_mem is not None:
-            memories.append(mem_tokens.detach().cpu().numpy())
         if not use_argmax:
             act = np.random.choice([0, 1, 2, 3, 4], p=torch.softmax(sampled_action, dim=-1).squeeze().detach().cpu().numpy())
         else:
@@ -274,7 +180,7 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
         print("\n")
     
     env.close()
-    return episode_return, act_list, t, out_states, memories, attn_map
+    return episode_return, act_list, t, out_states, memories, None
 
 # * ##############################################
 

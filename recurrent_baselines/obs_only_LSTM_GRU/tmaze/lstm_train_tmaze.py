@@ -14,9 +14,9 @@ parent_dir = os.path.dirname(parent_dir)
 sys.path.append(parent_dir)
 
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro, TMaze_data_generator, CombinedDataLoader
-from recurrent_baselines.Mamba.tmaze import mamba_trainer
+from recurrent_baselines.obs_only_LSTM_GRU.tmaze import lstm_trainer
 
-# python3 recurrent_baselines/Mamba/tmaze/mamba_train_tmaze.py --model_mode 'MAMBA' --curr 'false' --ckpt_folder 'MAMBA_max_3_no_curr' --max_n_final 3 --text 'MAMBA_max_3_no_curr'
+# python3 recurrent_baselines/obs_only_LSTM_GRU/tmaze/lstm_train_tmaze.py --model_mode 'LSTM' --curr 'true' --ckpt_folder 'LSTM_curr_max_3' --max_n_final 3 --text 'LSTM_curr'
 
 os.environ["MKL_NUM_THREADS"] = "1" 
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  
@@ -26,18 +26,18 @@ with open("wandb_config.yaml") as f:
     wandb_config = yaml.load(f, Loader=yaml.FullLoader)
 os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 
-with open("recurrent_baselines/Mamba/tmaze/config_mamba_K_90.yaml") as f:
+with open("recurrent_baselines/obs_only_LSTM_GRU/tmaze/config_lstm_K_90.yaml") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
     
 def create_args():
     parser = argparse.ArgumentParser(description='Description of your program')
 
-    parser.add_argument('--model_mode',     type=str, default='MAMBA',  help='Model training mode. Available variants: "DT, DTXL, RATE (Ours), RATEM (RMT)"')    
+    parser.add_argument('--model_mode',     type=str, default='LSTM',  help='Model training mode. Available variants: "DT, DTXL, RATE (Ours), RATEM (RMT)"')    
     parser.add_argument('--min_n_final',    type=int, default=1,       help='Start number of considered segments during training')
     parser.add_argument('--max_n_final',    type=int, default=3,       help='End number of considered segments during training')
     parser.add_argument('--start_seed',     type=int, default=1,       help='Start seed')
-    parser.add_argument('--end_seed',       type=int, default=10,       help='End seed')
-    parser.add_argument('--curr',           type=str, default='false',  help='Curriculum mode. If "true", then curriculum will be used during training')
+    parser.add_argument('--end_seed',       type=int, default=10,      help='End seed')
+    parser.add_argument('--curr',           type=str, default='true',  help='Curriculum mode. If "true", then curriculum will be used during training')
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
@@ -67,13 +67,15 @@ if __name__ == '__main__':
     config["training_config"]["curriculum"] = curr
 
     for RUN in range(start_seed, end_seed+1):
-        set_seed(RUN)   
+        set_seed(RUN)
 
         """ MODEL MODE """
 
-        if config["model_mode"] == "MAMBA":
+        if config["model_mode"] in ["LSTM", "GRU"]:
             config["training_config"]["context_length"] = config["training_config"]["context_length"] * config["training_config"]["sections"]
             config["training_config"]["sections"] = 1
+            config['model_config']['arch_mode'] = config['model_mode'].lower()
+            config['model_config']['max_length'] = None# config["training_config"]["context_length"]
 
         print(f"Selected Model: {config['model_mode']}")  
 
@@ -83,7 +85,7 @@ if __name__ == '__main__':
         name = f'{TEXT_DESCRIPTION}_{config["model_mode"]}_min_{min_n_final}_max_{max_n_final}_RUN_{RUN}_{date_time}'
         current_dir = os.getcwd()
         current_folder = os.path.basename(current_dir)
-        ckpt_path = f'../{current_folder}/recurrent_baselines/Mamba/tmaze/ckpt/{ckpt_folder}/{name}/'
+        ckpt_path = f'../{current_folder}/recurrent_baselines/obs_only_LSTM_GRU/tmaze/ckpt/{ckpt_folder}/{name}/'
         isExist = os.path.exists(ckpt_path)
         if not isExist:
             os.makedirs(ckpt_path)
@@ -106,7 +108,7 @@ if __name__ == '__main__':
 
                 n_fin = n_final
                 
-                if config["model_mode"] != "MAMBA":
+                if config["model_mode"] != "LSTM" and config["model_mode"] != "GRU":
                     config["training_config"]["sections"] = n_final
                 else:
                     config["training_config"]["sections"] = 1
@@ -136,7 +138,7 @@ if __name__ == '__main__':
                 del train_dataset
                 del val_dataset
                 new_segment = True
-                model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = mamba_trainer.train(model, optimizer, scheduler, 
+                model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = lstm_trainer.train(model, optimizer, scheduler, 
                                                                         raw_model, new_segment, epochs_counter, n_final, wandb_step, ckpt_path, config,
                                                                         train_dataloader, val_dataloader)
                 del train_dataloader
@@ -147,7 +149,7 @@ if __name__ == '__main__':
             
             n_fin = max_n_final
             
-            if config["model_mode"] != "MAMBA":
+            if config["model_mode"] != "LSTM" and config["model_mode"] != "GRU":
                 config["training_config"]["sections"] = max_n_final
             else:
                 config["training_config"]["sections"] = 1
@@ -178,7 +180,7 @@ if __name__ == '__main__':
             del train_dataset
             del val_dataset
             new_segment = True
-            model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = mamba_trainer.train(model, optimizer, scheduler, 
+            model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = lstm_trainer.train(model, optimizer, scheduler, 
                                                                     raw_model, new_segment, epochs_counter, max_n_final, wandb_step, ckpt_path, config,
                                                                     train_dataloader, val_dataloader)
             del train_dataloader
