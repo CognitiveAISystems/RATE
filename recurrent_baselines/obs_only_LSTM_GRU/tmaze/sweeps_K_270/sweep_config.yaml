@@ -1,21 +1,21 @@
-program: recurrent_baselines/obs_only_LSTM_GRU/vizdoom/lstm_train_vizdoom.py
+program: recurrent_baselines/obs_only_LSTM_GRU/tmaze/lstm_train_tmaze.py
 method: bayes
 metric:
-  name: ReturnsMean_56.5
+  name: Success_rate
   goal: maximize
 parameters:
   model_config.num_layers:
-    values: [1, 2]
+    values: [1, 2, 3, 4]
   model_config.hidden_size:
-    values: [64, 128]
+    values: [32, 64, 128, 256, 512]
   model_config.dropout:
-    values: [0, 0.2]
+    values: [0, 0.05, 0.1, 0.2, 0.5]
 
 early_terminate:
   type: hyperband 
   min_iter: 3
 
-# python recurrent_baselines/obs_only_LSTM_GRU/vizdoom/run_sweep_lstm.py
+# python recurrent_baselines/obs_only_LSTM_GRU/tmaze/sweeps_K_270/run_sweep_gru.py
 
 # command:
 #   - ${env}
