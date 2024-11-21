@@ -119,3 +119,32 @@ python3 recurrent_baselines/LSTM_GRU/vizdoom/sweeps/run_sweep_gru.py
 ```bash
 python3 recurrent_baselines/Mamba/vizdoom/sweeps/run_sweep_mamba.py
 ```
+
+## Sweep Results
+
+### GRU K = 9
+![image info](./assets/gru_k9.png)
+
+### LSTM K = 9
+![image info](./assets/lstm_k9.png)
+
+### MAMBA K = 9
+![image info](./assets/mamba_k9.png)
+
+### GRU K = 30
+![image info](./assets/gru_k30.png)
+
+### LSTM K = 30
+![image info](./assets/lstm_k30.png)
+
+### MAMBA K = 30
+![image info](./assets/mamba_k30.png)
+
+### GRU K = 90
+![image info](./assets/gru_k90.png)
+
+### LSTM K = 90
+![image info](./assets/lstm_k90.png)
+
+### MAMBA K = 90
+![image info](./assets/mamba_k90.png)

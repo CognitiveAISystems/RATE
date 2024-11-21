@@ -19,6 +19,7 @@ from TMaze_new.TMaze_new_src.train import train
 
 # python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'RATE_max_3' --max_n_final 3 --text 'RATE_max_3' --skip_dec_ffn
 # python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'SWEEP_TRANSFORMER/RATE_max_3' --max_n_final 3 --skip_dec_ffn --end_seed 5 --text 'SWEEP_TRANSFORMER/RATE_max_3'
+# python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'SWEEP_TRANSFORMER/RATE_max_3_with_FFN' --max_n_final 3  --text 'SWEEP_TRANSFORMER/RATE_max_3_with_FFN' --start_seed 1 --end_seed 2
 
 os.environ["MKL_NUM_THREADS"] = "1" 
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  
