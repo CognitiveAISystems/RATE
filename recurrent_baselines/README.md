@@ -16,7 +16,17 @@ Decision Mamba (DMamba) implementation is based on the [decision-mamba repositor
 
 > **Note**: All commands must be executed from the repository root directory.
 
-The default configuration uses 3 segments and a context length of 30 (K_{eff} = 90) as specified in `config_lstm.yaml`. Initial experiments with this configuration showed limited success (SR < 50%) for the recurrent baselines.
+In this section, we perform training and validation on trajectories of the same length, i.e., we train models on data of length K and validate them on T-Maze corridors of length T = K (testing the models' ability to learn at all).
+
+The default configuration uses context length K = 90 as specified in `config_lstm_K_90.yaml`. At K = 90, DLSTM, DGRU, and DMamba showed SR $\leq$ 50%. At K = 30, only DGRU and DMamba were able to learn, while at K = 9, all baselines were able to learn. This indicates that the considered baselines are generally capable of solving the T-Maze task, but only on short trajectories (in contrast to transformer architectures).
+
+Below is a table showing the results of the best configurations for each model:
+
+|    	| DLSTM | DGRU | DMamba | DT  | RATE |
+| ------ | ----- | ---- | ------ | --- | ---- |
+| T=K=9  | 1.0   | 1.0  | 1.0	| 1.0 | 1.0  |
+| T=K=30 | 0.6   | 1.0  | 1.0	| 1.0 | 1.0  |
+| T=K=90 | 0.5   | 0.5  | 0.5	| 1.0 | 1.0  |
 
 #### Training Commands
 
