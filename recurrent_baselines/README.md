@@ -35,7 +35,7 @@ When processing only observations $o$ at each time step, recurrent models show b
 | T=K=9  | 1.0   | 1.0  | 1.0	|
 | T=K=30 | 0.72   | 1.0  | 1.0	|
 | T=K=90 | 0.5   | 1.0  | 1.0	|
-| T=K=270 | 0.0*   | 0.32  | 0.55 |
+| T=K=270 | 0.0   | 0.32  | 0.55 |
 
 #### Training Commands
 
