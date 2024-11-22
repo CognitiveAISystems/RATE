@@ -40,8 +40,8 @@ model_config:
   state_dim: None
   act_dim: None
   num_layers: 1 # 3
-  hidden_size: 128 # 256
-  dropout: 0.1 # 0.2 
+  hidden_size: 512 # 256
+  dropout: 0.05 # 0.2 
 
 online_inference_config:
   episode_timeout: 

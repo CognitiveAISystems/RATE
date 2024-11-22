@@ -16,7 +16,7 @@ sys.path.append(parent_dir)
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro, TMaze_data_generator, CombinedDataLoader
 from recurrent_baselines.obs_only_LSTM_GRU.tmaze import lstm_trainer
 
-# python3 recurrent_baselines/obs_only_LSTM_GRU/tmaze/lstm_train_tmaze.py --model_mode 'LSTM' --curr 'true' --ckpt_folder 'LSTM_curr_max_3' --max_n_final 3 --text 'LSTM_curr'
+# python3 recurrent_baselines/obs_only_LSTM_GRU/tmaze/lstm_train_tmaze.py --model_mode 'LSTM' --curr 'false' --ckpt_folder 'LSTM_curr_max_3' --max_n_final 3 --text 'LSTM_curr'
 
 os.environ["MKL_NUM_THREADS"] = "1" 
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  
