@@ -20,13 +20,22 @@ In this section, we perform training and validation on trajectories of the same 
 
 The default configuration uses context length K = 90 as specified in `config_lstm_K_90.yaml`. At K = 90, DLSTM, DGRU, and DMamba showed SR $\leq$ 50%. At K = 30, only DGRU and DMamba were able to learn, while at K = 9, all baselines were able to learn. This indicates that the considered baselines are generally capable of solving the T-Maze task, but only on short trajectories (in contrast to transformer architectures).
 
-Below is a table showing the results of the best configurations for each model:
+Below is a table showing the results of the best configurations for each model. When training these models at each time step, we process the triplet $(R, o, a)$, where $R$ is the reward, $o$ is the observation, and $a$ is the action. Therefore, processing $K$ steps, we actually process $3\times K$ tokens.
 
 |    	| DLSTM | DGRU | DMamba | DT  | RATE |
 | ------ | ----- | ---- | ------ | --- | ---- |
 | T=K=9  | 1.0   | 1.0  | 1.0	| 1.0 | 1.0  |
 | T=K=30 | 0.6   | 1.0  | 1.0	| 1.0 | 1.0  |
 | T=K=90 | 0.5   | 0.5  | 0.5	| 1.0 | 1.0  |
+
+When processing only observations $o$ at each time step, recurrent models show better results than when processing triplets (previously SR = 1.0 at $T = K = 30$, now SR = 1.0 at $T = K = 90$), however, it is important to note that in this case the context $K$ is actually equal to $K$ tokens, so in terms of the number of tokens $K_{DLSTM} \times 3 = K_{LSTM}$.
+
+|    	| LSTM | GRU | Mamba |
+| ------ | ----- | ---- | ------ |
+| T=K=9  | 1.0   | 1.0  | 1.0	|
+| T=K=30 | 0.72   | 1.0  | 1.0	|
+| T=K=90 | 0.5   | 1.0  | 1.0	|
+| T=K=270 | 0.0*   | 0.32  | 0.55 |
 
 #### Training Commands
 
