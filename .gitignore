@@ -40,14 +40,14 @@ Atari/Atari_checkpoints/
 
 dreamerv3-torch/
 OpenDoorsOrder/ 
-ManiSkill/
-
+RATE_delete_after/
 
 # *.nn
 
 logdir_old/*
 memorymaze_9x9/
 
+plot_attention_maps.ipynb
 
 !readme_img/
 !RATE_scheme.png
