@@ -1,5 +1,7 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_continuous_actionpy
 # python ManiSkill/ppo_rgb_shell_game.py --env_id=ShellGamePush-v1 --exp-name=rgb-shellgamepush-v1 --num_envs=256 --update_epochs=8 --num_minibatches=8 --total_timesteps=1_000_000 --eval_freq=4 --num-steps=90 --capture-video --save-model --wandb-project-name "Maniskill-ShellGame" --track 
+
+# python ManiSkill/ppo_rgb_shell_game.py --env_id=ShellGamePush-v2 --exp-name=rgb-shellgamepush-v2-no-noops-num-steps-20-t-50 --num-envs=256 --update-epochs=8 --num-minibatches=8 --total_timesteps=5_000_000 --eval_freq=4 --num-steps=20 --capture-video --save-model --wandb-project-name "Maniskill-ShellGame" --track
 from collections import defaultdict
 import os
 import random
@@ -29,6 +31,7 @@ import copy
 from typing import Dict
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils import common
+
 class FlattenRGBDObservationWrapper(gym.ObservationWrapper):
     """
     Flattens the rgbd mode observations into a dictionary with two keys, "rgbd" and "state"
@@ -128,9 +131,9 @@ class Args:
     """the number of parallel evaluation environments"""
     partial_reset: bool = True
     """whether to let parallel environments reset upon termination instead of truncation"""
-    num_steps: int = 90
+    num_steps: int = 50
     """the number of steps to run in each environment per policy rollout"""
-    num_eval_steps: int = 90
+    num_eval_steps: int = 50
     """the number of steps to run in each evaluation environment during evaluation"""
     eval_reconfiguration_freq: Optional[int] = 1
     """for benchmarking purposes we want to reconfigure the eval environment each reset to ensure objects are randomized in some tasks"""

@@ -29,12 +29,12 @@ import time
 WARNED_ONCE = False
 
 
-@register_env("ShellGamePick-v2", max_episode_steps=90, asset_download_ids=["ycb"])
+@register_env("ShellGamePick-v2", max_episode_steps=50, asset_download_ids=["ycb"])
 class ShellGamePick_v2(BaseEnv):
 
     SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch"]
     agent: Union[Panda, PandaWristCam, Fetch]
-    goal_thresh = 0.05
+    goal_thresh = 0.025
 
     def __init__(
         self,
@@ -160,7 +160,7 @@ class ShellGamePick_v2(BaseEnv):
         self.goal_site = actors.build_cylinder(
             self.scene,
             radius=self.goal_thresh,
-            half_length=0.08,
+            half_length=self.goal_thresh,
             color=[0, 1, 0, 1],
             name="goal_site",
             body_type="kinematic",

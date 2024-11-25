@@ -64,7 +64,6 @@ class GPT(nn.Module):
         self.head = nn.Linear(config.n_embd, 4, bias=False)
         self.state_encoder = nn.Linear(4, config.n_embd)
         
-        nn.init.normal_(self.action_embeddings[0].weight, mean=0.0, std=0.02)
 
     def get_block_size(self):
         return self.block_size

@@ -32,14 +32,14 @@ training_config:
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
-  context_length: 30 # if RATE/GRATE: L = L, if DT: L = sections * L
+  context_length: 90 # if RATE/GRATE: L = L, if DT: L = sections * L
   sections: 3        # if RATE/GRATE: S = S, if DT: S = 1
   
 
 model_config:
   mode: "tmaze"
   n_layer: 1 # 1
-  d_model: 256 # 128
+  d_model: 128 # 128
   model_type: 'reward_conditioned'
   token_mixer: 'mamba' # 'mamba' 'mamba-min'
 
