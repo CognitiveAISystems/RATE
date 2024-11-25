@@ -470,7 +470,7 @@ class InitialZeroActionWrapper(gym.ActionWrapper):
     
 WARNED_ONCE = False
 
-@register_env("ShellGamePush-v2", max_episode_steps=50, asset_download_ids=["ycb"])
+@register_env("ShellGamePush-v2", max_episode_steps=90, asset_download_ids=["ycb"])
 class ShellGamePush_v2(BaseEnv):
 
     SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch"]
