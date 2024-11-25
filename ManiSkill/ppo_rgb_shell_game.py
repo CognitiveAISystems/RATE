@@ -374,7 +374,11 @@ if __name__ == "__main__":
     elif args.env_id == "ShellGamePick-v1":
         from shell_game_pick import ShellGamePick, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper 
     elif args.env_id == "ShellGamePick-v2":
-        from shell_game_pick import ShellGamePick_v2 as ShellGamePick, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper 
+        from shell_game_pick import ShellGamePick_v2 as ShellGamePick, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper
+    elif args.env_id == "ShellGamePushBall-v2":
+        from shell_game_push import ShellGamePushBall_v2 as ShellGamePushBall, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper 
+    elif args.env_id == "ShellGamePickBall-v2":
+        from shell_game_pick import ShellGamePickBall_v2 as ShellGamePickBall, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
