@@ -229,7 +229,7 @@ def get_returns_ManiSkill(env, model, ret, seed, episode_timeout, context_length
         # print(act.device)
         state, reward, terminated, truncated, eval_infos = env.step(act) # state [H, W, C], need [C, H, W]
         if sparse_reward:
-            reward = (reward==1).to(torch.float32)
+            reward = (reward==1).to(torch.float32) # !
         # print(reward.device, terminated.device, truncated.device)
         done = torch.logical_or(terminated, truncated).item()
         if "final_info" in eval_infos:

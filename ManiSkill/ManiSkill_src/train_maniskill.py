@@ -191,7 +191,8 @@ if __name__ == '__main__':
         #================================================== DATALOADERS CREATION ======================================================#
         
         # * IF USE ITER DATASET (5K TRAJECTORIES)
-        path_to_splitted_dataset = 'ManiSkill/dataset_pushcube_v1/'
+        # path_to_splitted_dataset = 'ManiSkill/dataset_pushcube_v1/'
+        path_to_splitted_dataset = 'ManiSkill/dataset_shellgamepush_v2/'
         train_dataset = ManiSkillIterDataset(path_to_splitted_dataset, 
                                             gamma=config["data_config"]["gamma"], 
                                             max_length=max_length, 

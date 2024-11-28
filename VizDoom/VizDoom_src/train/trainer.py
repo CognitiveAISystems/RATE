@@ -55,21 +55,105 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
         from collections import defaultdict
         tokens_cnt = tokens_cnt_step = 2_000_000
 
+        # * PushCube
+        # import gymnasium as gym
+        # import mani_skill.envs
+        # from mani_skill.utils import gym_utils
+        # from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper, FlattenRGBDObservationWrapper
+        # from mani_skill.utils.wrappers.record import RecordEpisode
+        # from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+
+        # eval_output_dir = f"ManiSkill/val_videos/{config['model_mode']}/{config['text_description']}"
+        # env_kwargs = dict(obs_mode="rgb", control_mode="pd_joint_delta_pos", render_mode="all", sim_backend="gpu")
+
+        # env = gym.make("PushCube-v1", num_envs=1, **env_kwargs) 
+        # env = FlattenRGBDObservationWrapper(env, rgb=True, depth=False, state=True)
+        # if isinstance(env.action_space, gym.spaces.Dict):
+        #     env = FlattenActionSpaceWrapper(env) 
+        # env = RecordEpisode(env, output_dir=eval_output_dir, save_trajectory=False, trajectory_name=f"rate_val", max_steps_per_video=50, video_fps=30)
+        # env = ManiSkillVectorEnv(env, 1, ignore_terminations=True, record_metrics=True)
+
+        # * ShellGamePush
         import gymnasium as gym
         import mani_skill.envs
         from mani_skill.utils import gym_utils
-        from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper, FlattenRGBDObservationWrapper
+        from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
         from mani_skill.utils.wrappers.record import RecordEpisode
         from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+
+        import copy
+        from typing import Dict
+        from mani_skill.envs.sapien_env import BaseEnv
+        from mani_skill.utils import common
+        class FlattenRGBDObservationWrapper(gym.ObservationWrapper):
+            """
+            Flattens the rgbd mode observations into a dictionary with two keys, "rgbd" and "state"
+
+            Args:
+                rgb (bool): Whether to include rgb images in the observation
+                depth (bool): Whether to include depth images in the observation
+                state (bool): Whether to include state data in the observation
+            """
+
+            def __init__(self, env, rgb=True, depth=True, state=True) -> None:
+                self.base_env: BaseEnv = env.unwrapped
+                super().__init__(env)
+                self.include_rgb = rgb
+                self.include_depth = depth
+                self.include_state = state
+                new_obs = self.observation(self.base_env._init_raw_obs)
+                self.base_env.update_obs_space(new_obs)
+
+            def observation(self, observation: Dict):
+                # Save cup_with_ball_number if it exists
+                cup_with_ball_number = observation.get('cup_with_ball_number', None)
+                
+                sensor_data = observation.pop("sensor_data")
+                # print("Available cameras:", list(sensor_data.keys())) 
+                # Available cameras: ['base_camera', 'hand_camera']
+                del observation["sensor_param"]
+                images = []
+                for cam_data in sensor_data.values():
+                    if self.include_rgb:
+                        images.append(cam_data["rgb"])
+                    if self.include_depth:
+                        images.append(cam_data["depth"])
+
+                images = torch.concat(images, axis=-1)
+                # flatten the rest of the data which should just be state data
+                observation = common.flatten_state_dict(
+                    observation, use_torch=True, device=self.base_env.device
+                )
+                ret = dict()
+                if self.include_state:
+                    ret["state"] = observation
+                if self.include_rgb and not self.include_depth:
+                    ret["rgb"] = images
+                elif self.include_rgb and self.include_depth:
+                    ret["rgbd"] = images
+                elif self.include_depth and not self.include_rgb:
+                    ret["depth"] = images
+                    
+                # Add back cup_with_ball_number if it existed
+                if cup_with_ball_number is not None:
+                    ret["cup_with_ball_number"] = cup_with_ball_number
+                    
+                return ret
+
+        from ManiSkill.shell_game_push import ShellGamePush_v2 as ShellGamePush, ColorObservationWrapper, InitialZeroActionWrapper, RenderStepInfoWrapper
 
         eval_output_dir = f"ManiSkill/val_videos/{config['model_mode']}/{config['text_description']}"
         env_kwargs = dict(obs_mode="rgb", control_mode="pd_joint_delta_pos", render_mode="all", sim_backend="gpu")
 
-        env = gym.make("PushCube-v1", num_envs=1, **env_kwargs) 
+        env = gym.make("ShellGamePush-v2", num_envs=1, **env_kwargs) 
+        env = ColorObservationWrapper(env)
+        # env = InitialZeroActionWrapper(env, n_initial_steps=34)
+        env = RenderStepInfoWrapper(env)
         env = FlattenRGBDObservationWrapper(env, rgb=True, depth=False, state=True)
         if isinstance(env.action_space, gym.spaces.Dict):
             env = FlattenActionSpaceWrapper(env) 
-        env = RecordEpisode(env, output_dir=eval_output_dir, save_trajectory=False, trajectory_name=f"rate_val", max_steps_per_video=50, video_fps=30)
+              
+        env = RecordEpisode(env, output_dir=eval_output_dir, save_trajectory=False, trajectory_name=f"rate_val", max_steps_per_video=90, video_fps=30)
         env = ManiSkillVectorEnv(env, 1, ignore_terminations=True, record_metrics=True)
     else:
         raise NotImplementedError
