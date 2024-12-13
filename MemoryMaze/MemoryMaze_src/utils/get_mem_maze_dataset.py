@@ -51,10 +51,16 @@ class MemoryMazeDataset(Dataset):
             data = np.load(file_path)
             
             # for i in range(0, 1000-self.max_length, 90):
+            
             for i in range(0, 500-self.max_length, 90):
                 if data['reward'][i:i+self.max_length].sum() >= 2:
                     self.filtered_list.append(self.file_list[idx])
                     self.list_of_start_indexes.append(i)
+
+            # for i in range(0, 500-self.max_length, 90):
+            #     if data['reward'][i:i+self.max_length].sum() >= 0:
+            #         self.filtered_list.append(self.file_list[idx])
+            #         self.list_of_start_indexes.append(i)
     
 
     def __len__(self):

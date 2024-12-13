@@ -173,7 +173,8 @@ if __name__ == '__main__':
         #================================================== DATALOADERS CREATION ======================================================#
         
         # * IF USE ITER DATASET (5K TRAJECTORIES)
-        path_to_splitted_dataset = 'VizDoom/VizDoom_data/iterative_data/'
+        path_to_splitted_dataset = '../../RATE/VizDoom/VizDoom_data/iterative_data/'
+        # path_to_splitted_dataset = 'VizDoom/VizDoom_data/iterative_data/'
         train_dataset = ViZDoomIterDataset(path_to_splitted_dataset, 
                                          gamma=config["data_config"]["gamma"], 
                                          max_length=max_length, 

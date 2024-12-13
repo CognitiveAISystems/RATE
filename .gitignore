@@ -41,6 +41,7 @@ Atari/Atari_checkpoints/
 dreamerv3-torch/
 OpenDoorsOrder/ 
 RATE_delete_after/
+RATE_ERNIE/
 
 # *.nn
 
@@ -58,3 +59,6 @@ plot_attention_maps.ipynb
 !atari_mujoco.png.DS_Store
 !**/assets/
 !**/assets/**
+
+val_dt.ipynb
+val_rate.ipynb

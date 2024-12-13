@@ -77,7 +77,7 @@ class MultiHeadAttention(nn.Module):
         # values shape: (N, value_len, heads, heads_dim)
         # out after matrix multiply: (N, query_len, heads, head_dim), then
         # we reshape and flatten the last two dimensions.
-
+        
         # Forward projection
         out = self.fc_out(out)
         # Linear layer doesn't modify the shape, final shape will be

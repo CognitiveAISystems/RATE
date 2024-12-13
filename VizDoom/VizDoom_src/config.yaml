@@ -1,7 +1,7 @@
 wandb_config:
     project_name: "v2-RATE-ViZDoom2C"
-    wwandb: False
-    wcomet: True
+    wwandb: True
+    wcomet: False
 
 data_config:
   gamma: 1.0
