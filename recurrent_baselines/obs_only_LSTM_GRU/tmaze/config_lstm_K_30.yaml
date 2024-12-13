@@ -1,5 +1,5 @@
 wandb_config:
-  project_name: "Reccurent-Baselines-RATE-T-Maze"
+  project_name: "New-Exp-Recurrent-Baselines-RATE-T-Maze"
   wwandb: True
 
 data_config:
@@ -40,8 +40,8 @@ model_config:
   state_dim: None
   act_dim: None
   num_layers: 1 # 3
-  hidden_size: 128 # 256
-  dropout: 0.1 # 0.2 
+  hidden_size: 64 # 256
+  dropout: 0.0 # 0.2 
 
 online_inference_config:
   episode_timeout: 

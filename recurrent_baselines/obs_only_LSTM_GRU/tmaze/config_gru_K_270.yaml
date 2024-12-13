@@ -31,7 +31,7 @@ training_config:
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
-  context_length: 3 # if RATE/GRATE: L = L, if DT: L = sections * L
+  context_length: 90 # if RATE/GRATE: L = L, if DT: L = sections * L
   sections: 3        # if RATE/GRATE: S = S, if DT: S = 1
   
 
@@ -39,8 +39,8 @@ model_config:
   mode: "tmaze"
   state_dim: None
   act_dim: None
-  num_layers: 3 # 3
-  hidden_size: 64 # 256
+  num_layers: 1 # 3
+  hidden_size: 512 # 256
   dropout: 0.2 # 0.2 
 
 online_inference_config:

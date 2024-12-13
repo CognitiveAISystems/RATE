@@ -1,5 +1,5 @@
 wandb_config:
-  project_name: "Reccurent-Baselines-RATE-T-Maze"
+  project_name: "New-Exp-Recurrent-Baselines-RATE-T-Maze"
   wwandb: True
 
 data_config:

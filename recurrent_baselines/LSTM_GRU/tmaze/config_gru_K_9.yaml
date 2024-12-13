@@ -39,9 +39,9 @@ model_config:
   mode: "tmaze"
   state_dim: None
   act_dim: None
-  num_layers: 3 # 3
-  hidden_size: 64 # 256
-  dropout: 0.2 # 0.2 
+  num_layers: 4 # 3
+  hidden_size: 128 # 256
+  dropout: 0.1 # 0.2 
 
 online_inference_config:
   episode_timeout: 
