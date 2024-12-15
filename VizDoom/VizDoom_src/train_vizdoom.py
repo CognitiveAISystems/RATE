@@ -7,6 +7,9 @@ import argparse
 import yaml
 from torch.utils.data import DataLoader
 
+
+# python3 doom_cql.py --seed 1
+
 import os
 import sys
 current_dir = os.path.dirname(__file__)
