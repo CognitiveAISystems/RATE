@@ -12,6 +12,8 @@ import torch.nn.functional as F
 import copy
 import argparse
 
+# python3 doom_cql.py --seed 1
+
 sys.path.append('../')
 from VizDoom.VizDoom_src.utils import get_vizdoom_iter_dataset, ViZDoomIterDataset
 from VizDoom.VizDoom_src.train import trainer
@@ -84,7 +86,7 @@ if __name__ == '__main__':
     args = create_args().parse_args()
     SEED = args.seed
     set_seed(SEED)
-    EXP_NAME = 'doom_cql_sar'
+    EXP_NAME = 'doom_bc_s'
     run = wandb.init(project="RATE_DOOM_CQL", name=f'{EXP_NAME}_{SEED}')
 
     criterion_all = nn.CrossEntropyLoss(ignore_index=-10, reduction='mean')
@@ -95,6 +97,7 @@ if __name__ == '__main__':
     #TARGET_UPDATE_FREQ = 10
     TAU = 0.005  # Soft update parameter
     TARGET_UPDATE_FREQ = 10
+    stacked_input = False
 
     target_q1 = copy.deepcopy(agent.q1)
     target_q2 = copy.deepcopy(agent.q2)
@@ -104,7 +107,7 @@ if __name__ == '__main__':
     for param in target_q2.parameters():
         param.requires_grad = False
 
-    for epochs in range(3600):
+    for epochs in range(1000):
         
         agent.train()
         
@@ -119,14 +122,14 @@ if __name__ == '__main__':
 
             agent.init_hidden(s.shape[0])
 
-            action_preds, q1_pred, q2_pred, cql_loss = agent(s,a,rtg, stacked_input=True)
+            action_preds, q1_pred, q2_pred, cql_loss = agent(s,a,rtg, stacked_input=stacked_input)
 
             with torch.no_grad():
                 next_s = s[:, 1:]
                 next_a = a[:, 1:]
                 next_rtg = rtg[:, 1:]
 
-                _, next_q1, next_q2, _ = agent(next_s, next_a, next_rtg, stacked_input=True)
+                _, next_q1, next_q2, _ = agent(next_s, next_a, next_rtg, stacked_input=stacked_input)
                 next_q = torch.min(next_q1, next_q2)
                 target_q = rtg[:, :-1] + DISCOUNT * (1 - d[:, :-1]) * next_q
 
@@ -140,8 +143,8 @@ if __name__ == '__main__':
             target_actions = a.reshape(-1).long()
             bc_loss = criterion_all(action_preds, target_actions)
             
-            total_loss = q1_loss + q2_loss + cql_loss + bc_loss
-            #total_loss = bc_loss
+            # total_loss = q1_loss + q2_loss + cql_loss + bc_loss
+            total_loss = bc_loss
         
             optimizer.zero_grad()
             total_loss.backward()#retain_graph=False)
@@ -166,7 +169,7 @@ if __name__ == '__main__':
 
 
         if epochs%10==0:
-            PATH = f'./ckpt/{SEED}/Doom_lstm_SAR_90_CQL'
+            PATH = f'./ckpt/{SEED}/Doom_lstm_S_90_BC'
             os.makedirs(PATH, exist_ok=True)
             torch.save(agent.state_dict(),f"{PATH}.ckpt")
 
