@@ -50,8 +50,8 @@ class MinigridMemoryIterDataset(Dataset):
             data = np.load(file_path)
             if data['obs'].shape[0] <= self.max_length:
                 self.filtered_list.append(self.file_list[idx])
-            if idx == 999:
-                break
+            # if idx == 999: # TODO: comment after DEBUGGING
+            #     break
 
     def __len__(self):
         return len(self.filtered_list)

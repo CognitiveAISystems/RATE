@@ -85,10 +85,8 @@ class DecisionLSTM(TrajectoryModel):
             self.predict_action = nn.Linear(hidden_size, 4, bias=False)
             self.embed_action = nn.Sequential(nn.Embedding(4+1, hidden_size), nn.Tanh())
             self.embed_return = nn.Linear(1, hidden_size)
-            self.embed_state = nn.Sequential(nn.Linear(4, 16), nn.ELU(),
-                                            nn.Linear(16, 64), nn.ELU(),
-                                            nn.Linear(64, hidden_size))
-
+            self.embed_state = nn.Linear(4, hidden_size)
+                                             
         if self.mode == 'doom':
             self.state_dim = 3
             self.act_dim = 5
@@ -104,7 +102,36 @@ class DecisionLSTM(TrajectoryModel):
             self.embed_action_toq = nn.Sequential(nn.Embedding(self.act_dim, self.act_dim), nn.Tanh())
             self.embed_action = nn.Sequential(nn.Embedding(self.act_dim, hidden_size), nn.Tanh())
             self.embed_return = nn.Sequential(nn.Linear(1, hidden_size), nn.Tanh())
+        
+        if self.mode == 'memory_maze':
+            self.state_dim = 3
+            self.act_dim = 6
+            self.predict_action = nn.Linear(hidden_size, self.act_dim, bias=False)
+            self.embed_state = nn.Sequential(nn.Conv2d(3, 32, 8, stride=4, padding=2),
+                                    nn.ReLU(), 
+                                    nn.Conv2d(32, 64, 4, stride=2, padding=2),
+                                    nn.ReLU(),
+                                    nn.Conv2d(64, 64, 3, stride=1, padding=2),
+                                    nn.ReLU(),
+                                    nn.Flatten(), nn.Linear(7744, hidden_size), 
+                                    nn.Tanh())
 
+            self.embed_action = nn.Sequential(nn.Embedding(self.act_dim, hidden_size), nn.Tanh())
+            self.embed_return = nn.Sequential(nn.Linear(1, hidden_size), nn.Tanh()) 
+
+        if self.mode == 'minigrid_memory':
+            self.state_dim = 3
+            self.act_dim = 4
+            self.predict_action = nn.Linear(hidden_size, self.act_dim, bias=False)
+            self.embed_state = nn.Sequential(nn.Conv2d(3, 32, 8, stride=4, padding=0),
+                                           	nn.ReLU(),
+                                           	nn.Conv2d(32, 64, 4, stride=2, padding=0),
+                                           	nn.ReLU(),
+                                           	nn.Conv2d(64, 64, 3, stride=1, padding=0),
+                                           	nn.ReLU(), 
+                                           	nn.Flatten(), nn.Linear(3136, hidden_size))
+            self.embed_action = nn.Sequential(nn.Embedding(self.act_dim, hidden_size))
+            self.embed_return = nn.Sequential(nn.Linear(1, hidden_size))
 
         self.q1 = nn.Sequential(
             nn.Linear(self.hidden_size + 1, self.hidden_size),
@@ -128,7 +155,6 @@ class DecisionLSTM(TrajectoryModel):
         self.h_0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(self.device) 
         self.c_0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(self.device) 
 
-    
 
     def forward(self, states, actions, returns_to_go, attention_mask=None, update_hidden=True, stacked_input=False):
         
@@ -137,20 +163,40 @@ class DecisionLSTM(TrajectoryModel):
             batch_size, seq_length = states.shape[0], states.shape[1]
             state_embeddings = self.embed_state(states)
 
-        if self.mode == 'doom':
+            use_long = False
+            for name, module in self.embed_action.named_children():
+                if isinstance(module, nn.Embedding):
+                    use_long = True
+            if use_long:
+                if self.mode == 'tmaze':
+                    actions = torch.where(actions == -10, torch.tensor(4), actions)
+                elif self.mode == 'aar':
+                    actions = torch.where(actions == -10, torch.tensor(3), actions)
+                actions = actions.to(dtype=torch.long, device=states.device)
+                action_embeddings = self.embed_action(actions).squeeze(2) # (batch, block_size, n_embd)
+            else:
+                action_embeddings = self.embed_action(actions) # (batch, block_size, n_embd)
+
+            returns_embeddings = self.embed_return(returns_to_go)
+            
+
+        if self.mode in ['doom', 'memory_maze', 'minigrid_memory']:
             batch_size, seq_length, C, H, W = states.shape
             states = states.reshape(-1, C, H, W).type(torch.float32).contiguous() 
             state_embeddings = self.embed_state(states).reshape(batch_size, seq_length, self.hidden_size)
 
+            if self.mode == 'minigrid_memory':
+                actions = torch.where(actions == -10, torch.tensor(3), actions)
+                actions = actions.to(dtype=torch.long, device=states.device)
             action_embeddings = self.embed_action(actions).squeeze(-2)
             returns_embeddings = self.embed_return(returns_to_go)
 
-            if stacked_input:
-                stacked_inputs = torch.stack(
-                    (state_embeddings, action_embeddings, returns_embeddings), dim=1
-                ).reshape(batch_size, 3*seq_length, self.hidden_size)
-            else:
-                stacked_inputs = state_embeddings
+        if stacked_input:
+            stacked_inputs = torch.stack(
+                (state_embeddings, action_embeddings, returns_embeddings), dim=1
+            ).reshape(batch_size, 3*seq_length, self.hidden_size)
+        else:
+            stacked_inputs = state_embeddings
 
 
         if update_hidden:
@@ -169,7 +215,7 @@ class DecisionLSTM(TrajectoryModel):
         q1 = self.q1(state_action)
         q2 = self.q2(state_action)
 
-        # CQL регуляризация
+        # CQL regularization
         random_actions = torch.randint(0, self.act_dim, (batch_size, seq_length, 1)).to(self.device)
         random_state_action = torch.cat([lstm_outputs, random_actions], dim=-1)
         random_q1 = self.q1(random_state_action)
