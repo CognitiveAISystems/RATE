@@ -62,3 +62,7 @@ plot_attention_maps.ipynb
 
 val_dt.ipynb
 val_rate.ipynb
+
+ManiSkill/
+
+offline_rl_baselines/validation/*.ipynb
