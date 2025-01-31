@@ -56,14 +56,15 @@ os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 with open("TMaze_new/TMaze_new_src/config.yaml") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
-max_length = config["training_config"]["sections"] * config["training_config"]["context_length"]
-print(f"{max_length=}")
 
 # *========== AGENT SETTINGS ============*
 
-agent = DecisionLSTM(4, 1, 128, mode='tmaze')
+agent = DecisionLSTM(4, 1, 32, num_layers=2, mode='tmaze')
 agent.train()
 agent.to(agent.device)
+
+config['training_config']['grad_norm_clip'] = None # !!!
+
 
 optimizer = torch.optim.AdamW(
     agent.parameters(), 
@@ -91,6 +92,9 @@ if __name__ == '__main__':
     set_seed(args.seed)
     run_name = f'{args.exp_name}_{args.loss_mode}_{args.seed}_stacked_{args.stacked_input}_context_{args.context_length}_segments_{args.segments}'
     run = wandb.init(project="RATE_TMAZE_CQL", name=run_name, config=args, save_code=True)
+
+    max_length = args.segments * args.context_length
+    print(f"{max_length=}")
 
     # *========== DATASET SETTINGS ============*
 
@@ -179,16 +183,16 @@ if __name__ == '__main__':
             a = a.cuda()
             rtg = rtg.cuda().float()
 
-            agent.init_hidden(s.shape[0])
+            agent.init_hidden(s.shape[0]) 
 
-            action_preds, q1_pred, q2_pred, cql_loss = agent(s, a, rtg, stacked_input=args.stacked_input)
+            action_preds, q1_pred, q2_pred, cql_loss = agent(s, a, rtg, update_hidden=True, stacked_input=args.stacked_input)
 
             with torch.no_grad():
                 next_s = s[:, 1:]
                 next_a = a[:, 1:]
                 next_rtg = rtg[:, 1:]
 
-                _, next_q1, next_q2, _ = agent(next_s, next_a, next_rtg, stacked_input=args.stacked_input)
+                _, next_q1, next_q2, _ = agent(next_s, next_a, next_rtg, update_hidden=True, stacked_input=args.stacked_input)
                 next_q = torch.min(next_q1, next_q2)
                 # print(rtg.shape, d.shape, next_s.shape, next_a.shape, next_rtg.shape, next_q1.shape, next_q2.shape, next_q.shape)
                 target_q = rtg[:, :-1] + DISCOUNT * (1 - d[:, :-1]) * next_q
@@ -209,7 +213,8 @@ if __name__ == '__main__':
         
             optimizer.zero_grad()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(agent.parameters(), config["training_config"]["grad_norm_clip"])
+            if config["training_config"]["grad_norm_clip"] is not None:
+                torch.nn.utils.clip_grad_norm_(agent.parameters(), config["training_config"]["grad_norm_clip"])
             optimizer.step()
         
         if it % 1 == 0:
@@ -230,7 +235,7 @@ if __name__ == '__main__':
 
 
         if epochs%10==0:
-            PATH = f'offline_rl_baselines/ckpt/tmaze_ckpt/{args.loss_mode}/{args.seed}/{run_name}'
+            PATH = f'offline_rl_baselines/ckpt/tmaze_ckpt_v2/{args.loss_mode}/{args.seed}/{run_name}'
             os.makedirs(os.path.dirname(PATH), exist_ok=True)
             torch.save(agent.state_dict(),f"{PATH}.ckpt")
 
