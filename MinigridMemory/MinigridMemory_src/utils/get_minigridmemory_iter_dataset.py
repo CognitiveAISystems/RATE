@@ -48,6 +48,7 @@ class MinigridMemoryIterDataset(Dataset):
             #for idx in range(len(self.file_list)):
             file_path = os.path.join(self.directory, self.file_list[idx])
             data = np.load(file_path)
+            # print(data['obs'].shape[0])
             if data['obs'].shape[0] <= self.max_length:
                 self.filtered_list.append(self.file_list[idx])
             # if idx == 999: # TODO: comment after DEBUGGING

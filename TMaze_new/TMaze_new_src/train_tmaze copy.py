@@ -8,20 +8,14 @@ import sys
 
 
 import os
-# import sys
-# current_dir = os.path.dirname(__file__)
-# parent_dir = os.path.dirname(current_dir)
-# parent_dir = os.path.dirname(parent_dir)
-# sys.path.append(parent_dir)
-
-from pathlib import Path
-ROOT_DIR = Path(__file__).parent.parent.parent
-sys.path.append(str(ROOT_DIR))
+import sys
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(current_dir)
+parent_dir = os.path.dirname(parent_dir)
+sys.path.append(parent_dir)
 
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro, TMaze_data_generator, CombinedDataLoader
-# from TMaze_new.TMaze_new_src.train import train
-from src.trainer import Trainer
-# from src.trainer_new import train
+from TMaze_new.TMaze_new_src.train import train
 
 # python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'RATE_max_3' --max_n_final 3 --text 'RATE_max_3' --skip_dec_ffn
 # python3 TMaze_new/TMaze_new_src/train_tmaze.py --model_mode 'RATE' --arch_mode 'TrXL' --curr 'false' --ckpt_folder 'SWEEP_TRANSFORMER/RATE_max_3' --max_n_final 3 --skip_dec_ffn --end_seed 5 --text 'SWEEP_TRANSFORMER/RATE_max_3'
@@ -48,6 +42,7 @@ def create_args():
     parser.add_argument('--max_n_final',    type=int, default=3,       help='End number of considered segments during training')
     parser.add_argument('--start_seed',     type=int, default=1,       help='Start seed')
     parser.add_argument('--end_seed',       type=int, default=10,      help='End seed')
+    parser.add_argument('--curr',           type=str, default='false', help='Curriculum mode. If "true", then curriculum will be used during training')
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
@@ -74,6 +69,7 @@ if __name__ == '__main__':
     start_seed = args.start_seed
     end_seed = args.end_seed
     arch_mode = args.arch_mode
+    curr = args.curr
     min_n_final = args.min_n_final
     max_n_final = args.max_n_final
     ckpt_folder = args.ckpt_folder
@@ -99,6 +95,7 @@ if __name__ == '__main__':
     config["online_inference_config"]["corridor_length"] = max_n_final*SEGMENT_LENGTH-2
     config["training_config"]["sections"] = max_n_final
     config["model_mode"] = model_mode
+    config["training_config"]["curriculum"] = curr
     config["arctitecture_mode"] = arch_mode
     config['model_config']['skip_dec_ffn'] = skip_dec_ffn
 
@@ -209,48 +206,92 @@ if __name__ == '__main__':
 
         wandb_step = 0
         epochs_counter = 0
-        # model, optimizer, scheduler, raw_model = None, None, None, None
+        model, optimizer, scheduler, raw_model = None, None, None, None
         prev_ep = None
-  
-        n_fin = max_n_final
         
-        if config["model_mode"] != "DT" and config["model_mode"] != "DTXL":
-            config["training_config"]["sections"] = max_n_final
-        else:
-            config["training_config"]["sections"] = 1
+        if config["training_config"]["curriculum"].lower() == 'true':
+            print("MODE: CURRICULUM")
+            for n_final in range(min_n_final, max_n_final+1):
 
-        combined_dataloader = CombinedDataLoader(n_init=min_n_final, 
-                                                    n_final=n_fin, 
-                                                    multiplier=config["data_config"]["multiplier"], 
-                                                    hint_steps=config["data_config"]["hint_steps"], 
-                                                    batch_size=config["training_config"]["batch_size"], 
-                                                    mode="", 
-                                                    cut_dataset=config["data_config"]["cut_dataset"], 
-                                                    one_mixed_dataset=True, 
-                                                    desired_reward=config["data_config"]["desired_reward"], 
-                                                    win_only=config["data_config"]["win_only"],
-                                                    segment_length=SEGMENT_LENGTH)
-        
-        # Split dataset into train and validation sets
-        full_dataset = combined_dataloader.dataset
-        train_size = int(0.8 * len(full_dataset))
-        val_size = len(full_dataset) - train_size
-        train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+                n_fin = n_final
+                
+                if config["model_mode"] != "DT" and config["model_mode"] != "DTXL":
+                    config["training_config"]["sections"] = n_final
+                else:
+                    config["training_config"]["sections"] = 1
 
-        # Use DataLoader to load the datasets in parallel
-        train_dataloader = DataLoader(train_dataset, batch_size=config["training_config"]["batch_size"], shuffle=True, num_workers=4)
-        val_dataloader = DataLoader(val_dataset, batch_size=config["training_config"]["batch_size"], shuffle=True, num_workers=4)
-        print(f"Number of considered segments: {max_n_final}, dataset length: {len(combined_dataloader.dataset)}, Train: {len(train_dataset)}, Val: {len(val_dataset)}")
-        del full_dataset
-        del train_dataset
-        del val_dataset
-        new_segment = True
+                combined_dataloader = CombinedDataLoader(n_init=min_n_final, 
+                                                         n_final=n_fin, 
+                                                         multiplier=config["data_config"]["multiplier"], 
+                                                         hint_steps=config["data_config"]["hint_steps"], 
+                                                         batch_size=config["training_config"]["batch_size"],
+                                                         mode="", 
+                                                         cut_dataset=config["data_config"]["cut_dataset"], 
+                                                         desired_reward=config["data_config"]["desired_reward"], 
+                                                         win_only=config["data_config"]["win_only"],
+                                                         segment_length=SEGMENT_LENGTH)
 
-        trainer = Trainer(config)
-        model = trainer.train(train_dataloader)
+                # Split dataset into train and validation sets
+                full_dataset = combined_dataloader.dataset
+                train_size = int(0.8 * len(full_dataset))
+                val_size = len(full_dataset) - train_size
+                train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
-        del train_dataloader
-        del val_dataloader
+                # Use DataLoader to load the datasets in parallel
+                train_dataloader = DataLoader(train_dataset, batch_size=config["training_config"]["batch_size"], shuffle=True, num_workers=4)
+                val_dataloader = DataLoader(val_dataset, batch_size=config["training_config"]["batch_size"], shuffle=True, num_workers=4)
+                print(f"Number of considered segments: {n_final}, dataset length: {len(combined_dataloader.dataset)}, Train: {len(train_dataset)}, Val: {len(val_dataset)}")
+                del full_dataset
+                del train_dataset
+                del val_dataset
+                new_segment = True
+                model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = train(model, optimizer, scheduler, 
+                                                                        raw_model, new_segment, epochs_counter, n_final, wandb_step, ckpt_path, config,
+                                                                        train_dataloader, val_dataloader, max_n_final, experiment)
+                del train_dataloader
+                del val_dataloader
+                
+        elif config["training_config"]["curriculum"].lower() == 'false':
+            print("MODE: CLASSIC")
+            
+            n_fin = max_n_final
+            
+            if config["model_mode"] != "DT" and config["model_mode"] != "DTXL":
+                config["training_config"]["sections"] = max_n_final
+            else:
+                config["training_config"]["sections"] = 1
+
+            combined_dataloader = CombinedDataLoader(n_init=min_n_final, 
+                                                     n_final=n_fin, 
+                                                     multiplier=config["data_config"]["multiplier"], 
+                                                     hint_steps=config["data_config"]["hint_steps"], 
+                                                     batch_size=config["training_config"]["batch_size"], 
+                                                     mode="", 
+                                                     cut_dataset=config["data_config"]["cut_dataset"], 
+                                                     one_mixed_dataset=True, 
+                                                     desired_reward=config["data_config"]["desired_reward"], 
+                                                     win_only=config["data_config"]["win_only"],
+                                                     segment_length=SEGMENT_LENGTH)
+            
+            # Split dataset into train and validation sets
+            full_dataset = combined_dataloader.dataset
+            train_size = int(0.8 * len(full_dataset))
+            val_size = len(full_dataset) - train_size
+            train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+
+            # Use DataLoader to load the datasets in parallel
+            train_dataloader = DataLoader(train_dataset, batch_size=config["training_config"]["batch_size"], shuffle=True, num_workers=4)
+            val_dataloader = DataLoader(val_dataset, batch_size=config["training_config"]["batch_size"], shuffle=True, num_workers=4)
+            print(f"Number of considered segments: {max_n_final}, dataset length: {len(combined_dataloader.dataset)}, Train: {len(train_dataset)}, Val: {len(val_dataset)}")
+            del full_dataset
+            del train_dataset
+            del val_dataset
+            new_segment = True
+            model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = train(model, optimizer, scheduler, 
+                                                                    raw_model, new_segment, epochs_counter, max_n_final, wandb_step, ckpt_path, config,
+                                                                    train_dataloader, val_dataloader, max_n_final, experiment)
+            del train_dataloader
+            del val_dataloader
         
         if config["wandb_config"]["wwandb"]:
             run.finish()

@@ -35,7 +35,7 @@ training_config:
 model_config:
   mode: "aar"
   STATE_DIM: 3
-  ACTION_DIM: 1
+  ACTION_DIM: 3
 
   n_token: 10000 # vocab_size
   n_layer: 6 # 8 

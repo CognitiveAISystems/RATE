@@ -46,7 +46,7 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
     if config['model_config']['mode'] == "memory_maze":
         from MemoryMaze.MemoryMaze_src.inference.val_mem_maze import get_returns_MemoryMaze 
         tokens_cnt = tokens_cnt_step= 8_000_000
-    elif config['model_config']['mode'] == "doom":
+    elif config['model_config']['mode'] == "vizdoom":
         from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
     elif config['model_config']['mode'] == "minigrid_memory":
         from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
@@ -248,10 +248,10 @@ def train(ckpt_path, config, train_dataloader, mean, std, max_segments, experime
             experiment.log_metrics({"epochs": epoch+1}, step=it_counter)
         
         # ? Save
-        if config["model_config"]["mode"] == 'doom':
+        if config["model_config"]["mode"] == 'vizdoom':
             if ((epoch + 1) % int(config["training_config"]["ckpt_epoch"])) == 0 or epoch == config["training_config"]["epochs"] - 1 or (epoch + 1) == 1:
                 if config["training_config"]["online_inference"] == True:
-                    if config["model_config"]["mode"] == 'doom':
+                    if config["model_config"]["mode"] == 'vizdoom':
                         model.eval()
                         with torch.no_grad():
                             FRAME_SKIP = 2

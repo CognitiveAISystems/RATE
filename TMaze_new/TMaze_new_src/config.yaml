@@ -26,11 +26,11 @@ training_config:
   grad_norm_clip: 1.0 # 1.0
   epochs: 50 # 50
   ckpt_epoch: 10
-  use_erl_stop: False
-  coef: 0.0
   # inference during training
   online_inference: True
   last_inference: True
+  log_last_segment_loss_only: True
+  use_cosine_decay: False
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
@@ -41,8 +41,7 @@ training_config:
 model_config:
   mode: "tmaze"
   STATE_DIM: 4
-  ACTION_DIM: 1
-  n_token: 10000 # vocab_size
+  ACTION_DIM: 4
   n_layer: 8 # 8 
   n_head: 10 # 10
   n_head_ca: 4 # 4
@@ -53,17 +52,16 @@ model_config:
   dropatt: 0.0 # 0.0
   mem_len: 0 # 0
   ext_len: 0 # 0
-  tie_weight: False
   num_mem_tokens: 5 # 5 d_head * nmt = diff params
   mem_at_end: True
   mrv_act: 'relu'
   skip_dec_ffn: True
 
+  padding_idx: -10
+
 online_inference_config:
   episode_timeout: 
   corridor_length: 
 
-
-
-
-
+tensorboard_dir: "runs/TMaze_new_experiment"
+ckpt_dir: "TMaze_new/TMaze_new_src/checkpoints"

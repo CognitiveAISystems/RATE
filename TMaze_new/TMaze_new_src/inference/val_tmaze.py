@@ -17,14 +17,19 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
             results = model(x_cond, actions, rtgs, None, timestep, *saved_context, mem_tokens=mem_tokens)
         else:
             results = model(x_cond, actions, rtgs, None, timestep, mem_tokens=mem_tokens) 
-        logits = results[0][0][:,-1,:]
-        mem_tokens = results[1]
-        memory = results[0][2:]
+        # logits = results[0][0][:,-1,:]
+        # mem_tokens = results[1]
+        # memory = results[0][2:]
+
+        logits = results['logits'][:,-1,:]
+        memory = results['new_mems']
+        mem_tokens = results['mem_tokens']
+
         attn_map = model.attn_map
         
     return logits, mem_tokens, memory, attn_map
 
-def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, context_length, device, act_dim, config, create_video=False):
+def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, context_length, device, config, create_video=False):
     
     scale = 1
     channels = 5
@@ -54,7 +59,7 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     rews = []
     attentions = []
     states = state.to(device=device, dtype=torch.float32)
-    actions = torch.zeros((0, act_dim), device=device, dtype=torch.float32)
+    actions = torch.zeros((0, 1), device=device, dtype=torch.float32)
     rewards = torch.zeros(0, device=device, dtype=torch.float32)
     target_return = torch.tensor(ret, device=device, dtype=torch.float32).reshape(1, 1)
     sim_states = []
@@ -73,7 +78,7 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     saved_mem = None
     
     for t in range(max_ep_len):
-        actions = torch.cat([actions, torch.zeros((1, act_dim), device=device)], dim=0)
+        actions = torch.cat([actions, torch.zeros((1, 1), device=device)], dim=0)
         rewards = torch.cat([rewards, torch.zeros(1, device=device)])
         
         act_new_segment = False

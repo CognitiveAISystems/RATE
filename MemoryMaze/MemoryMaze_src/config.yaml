@@ -32,7 +32,7 @@ training_config:
 
 model_config:
   mode: "memory_maze"
-  STATE_DIM: 3
+  STATE_DIM: 3 # ! not used
   ACTION_DIM: 6 # 2 if OHE else 4
   n_token: 10000 # vocab_size
   n_layer: 6 # 3 8

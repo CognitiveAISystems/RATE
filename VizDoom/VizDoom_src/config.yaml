@@ -18,10 +18,12 @@ training_config:
   final_tokens: 10000000
   grad_norm_clip: 1.0 # 1.0
   epochs: 100 #250
-  ckpt_epoch: 8 # 2
+  ckpt_epoch: 1 # 8 # TODO: change to 8 after debugging!
   use_erl_stop: False
   # inference during training
   online_inference: True
+  log_last_segment_loss_only: False
+  use_cosine_decay: True
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
@@ -30,10 +32,9 @@ training_config:
 
 
 model_config:
-  mode: "doom"
+  mode: "vizdoom"
   STATE_DIM: 3
   ACTION_DIM: 5 # 2 if OHE else 4
-  n_token: 10000 # vocab_size
   n_layer: 6 # 3 8
   n_head: 8 # 1 10
   n_head_ca: 2 # ! 2 | number of cross-attention heads
@@ -44,14 +45,19 @@ model_config:
   dropatt: 0.05 # 0.05
   mem_len: 300
   ext_len: 0
-  tie_weight: False
   num_mem_tokens: 5 # 5 d_head * nmt = diff params
   mem_at_end: True
   mrv_act: 'relu'
   skip_dec_ffn: True
+
+  padding_idx: null # None
 
 online_inference_config:
   use_argmax: False # False
   episode_timeout: 4200 # 2100
   desired_return_1: 56.5 # 56.5
   # desired_return_2: 56.5 # 56.5
+
+
+tensorboard_dir: "runs/VizDoom_experiment"
+ckpt_dir: "VizDoom/VizDoom_src/checkpoints"

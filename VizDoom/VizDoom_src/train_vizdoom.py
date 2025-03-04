@@ -12,14 +12,20 @@ from torch.utils.data import DataLoader
 
 import os
 import sys
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.dirname(current_dir)
-parent_dir = os.path.dirname(parent_dir)
-sys.path.append(parent_dir)
+# current_dir = os.path.dirname(__file__)
+# parent_dir = os.path.dirname(current_dir)
+# parent_dir = os.path.dirname(parent_dir)
+# sys.path.append(parent_dir)
+
+from pathlib import Path
+ROOT_DIR = Path(__file__).parent.parent.parent
+sys.path.append(str(ROOT_DIR))
 
 from VizDoom.VizDoom_src.train import train
 from TMaze_new.TMaze_new_src.utils import set_seed, get_intro_vizdoom
 from VizDoom.VizDoom_src.utils import batch_mean_and_std, ViZDoomIterDataset
+
+from src.trainer import Trainer
 
 os.environ["MKL_NUM_THREADS"] = "1" 
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  
@@ -205,7 +211,10 @@ if __name__ == '__main__':
             mean, std = None, None
         #==============================================================================================================================#
         wandb_step = 0
-        model = train(ckpt_path, config, train_dataloader, mean, std, max_segments, experiment)
+        # model = train(ckpt_path, config, train_dataloader, mean, std, max_segments, experiment)
+
+        trainer = Trainer(config)
+        model = trainer.train(train_dataloader)
                 
         if config["wandb_config"]["wwandb"]:
             run.finish()

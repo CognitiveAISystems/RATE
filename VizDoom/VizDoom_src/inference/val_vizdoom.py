@@ -79,14 +79,19 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
         else:
             results = model(x_cond, actions, rtgs,None, timestep, mem_tokens=mem_tokens) 
             
-        logits = results[0][0].detach()[:,-1,:]
-        mem_tokens = results[1]
-        memory = results[0][2:]
+        # logits = results[0][0].detach()[:,-1,:]
+        # mem_tokens = results[1]
+        # memory = results[0][2:]
+
+        logits = results['logits'][:,-1,:]
+        memory = results['new_mems']
+        mem_tokens = results['mem_tokens']
+        
         attn_map = model.attn_map
         
     return logits, mem_tokens, memory, attn_map
 
-def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, device, act_dim, config, mean, std, use_argmax=False, create_video=False):
+def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, device, config, use_argmax=False, create_video=False):
     
     set_seed(seed)
     
