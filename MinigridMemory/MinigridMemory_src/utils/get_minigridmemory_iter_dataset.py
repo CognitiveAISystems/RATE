@@ -51,7 +51,7 @@ class MinigridMemoryIterDataset(Dataset):
             # print(data['obs'].shape[0])
             if data['obs'].shape[0] <= self.max_length:
                 self.filtered_list.append(self.file_list[idx])
-            # if idx == 999: # TODO: comment after DEBUGGING
+            # if idx == 499: # TODO: comment after debugging
             #     break
 
     def __len__(self):

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import os
+
 import wandb
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -40,7 +42,7 @@ class Trainer(BaseTrainer):
         self.epochs_counter = 0
         self.wandb_step = 0
         self.warmup_changed_to_decay = False
-        self.ckpt_dir = config["ckpt_dir"]
+        # self.ckpt_dir = config["ckpt_dir"]
         self.log_last_segment_loss_only = config["training_config"]["log_last_segment_loss_only"]
         self.use_cosine_decay = config["training_config"]["use_cosine_decay"]
         self.env_name = config["model_config"]["mode"]
@@ -49,13 +51,15 @@ class Trainer(BaseTrainer):
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_tmaze
         elif self.env_name == 'vizdoom':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_vizdoom
+        elif self.env_name == 'minigrid_memory':
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_minigridmemory
         
         # Constants
         self.EFFECTIVE_SIZE_BLOCKS = config["training_config"]["context_length"] * config["training_config"]["sections"]
         self.BLOCKS_CONTEXT = config["training_config"]["context_length"]
 
         # Initialize loggers
-        self.writer = SummaryWriter(log_dir=config.get("tensorboard_dir", "runs/experiment"))
+        # self.writer = SummaryWriter(log_dir=config.get("tensorboard_dir", "runs/experiment"))
         self.global_step = 0
 
     def initialize_model(self):
@@ -148,8 +152,16 @@ class Trainer(BaseTrainer):
             }
 
         elif self.env_name == 'vizdoom':
-            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)),
-                                    target.reshape(-1).long())
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1).long()
+            )
+        elif self.env_name == 'minigrid_memory':
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1).long(), 
+                ignore_index=-10
+            )
 
         additional_metrics = {}
 
@@ -209,6 +221,13 @@ class Trainer(BaseTrainer):
                 episode_timeout=episode_timeout,
                 text=text
             )
+        elif self.env_name == 'minigrid_memory':
+            return self._perform_mini_inference_impl(
+                self,  # passing self as first argument
+                episode_timeout=episode_timeout,
+                text=text
+            )
+
 
     def log_metrics(self, loss, additional_metrics, flag, log_last_segment_only=True):
         """Helper function to log training metrics to wandb.
@@ -373,6 +392,13 @@ class Trainer(BaseTrainer):
                             episode_timeout=self.config["online_inference_config"]["episode_timeout"],
                             text=None,
                         )
+                    elif self.env_name == 'minigrid_memory':
+                       self.perform_mini_inference(
+                            episode_timeout=self.config["online_inference_config"]["episode_timeout"],
+                            text=None,
+                        )
+                
+                self.save_checkpoint()
 
             # Inference at all lengths at last epoch
             if epoch == self.config["training_config"]["epochs"] - 1 and self.env_name == 'tmaze' and self.config["training_config"]["last_inference"]:
@@ -390,9 +416,16 @@ class Trainer(BaseTrainer):
                 if self.wwandb:
                     self.log({"checkpoint_step": self.wandb_step})
 
-                torch.save(self.model.state_dict(), self.ckpt_dir + '_save' + '_KTD.pth')
+                
 
         return self.model, self.wandb_step, self.optimizer, self.scheduler, self.raw_model, self.epochs_counter
+    
+    def save_checkpoint(self):
+        self.model.eval()
+        # torch.save(self.model.state_dict(), self.ckpt_dir + '/_save' + '_KTD.pth')
+        save_path = os.path.join(self.ckpt_dir, f'model_step_{self.wandb_step}_KTD.pth')
+        torch.save(self.model.state_dict(), save_path)
+        self.model.train()
 
     def __enter__(self):
         return self

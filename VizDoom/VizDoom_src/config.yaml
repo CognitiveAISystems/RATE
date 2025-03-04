@@ -18,7 +18,7 @@ training_config:
   final_tokens: 10000000
   grad_norm_clip: 1.0 # 1.0
   epochs: 100 #250
-  ckpt_epoch: 1 # 8 # TODO: change to 8 after debugging!
+  ckpt_epoch: 8 # 8 # TODO: change to 8 after debugging!
   use_erl_stop: False
   # inference during training
   online_inference: True

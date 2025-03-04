@@ -20,7 +20,7 @@ class BaseTrainer:
         run_name = config.get("run_name", "run")
         self.run_dir = f"{base_dir}/{run_name}_{timestamp}"
         
-        # Create checkpoints subdirectory
+        # Create checkpoints and tensorboard logs subdirectories
         self.ckpt_dir = f"{self.run_dir}/checkpoints"
         os.makedirs(self.ckpt_dir, exist_ok=True)
         

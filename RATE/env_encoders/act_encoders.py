@@ -16,7 +16,7 @@ class ActEncoder(nn.Module):
         elif env_name == 'memory_maze':
             self.act_encoder = nn.Sequential(nn.Embedding(act_dim, d_embed), nn.Tanh()) # * act_dim = 6
         elif env_name == 'minigrid_memory':
-            self.act_encoder = nn.Sequential(nn.Embedding(act_dim, d_embed)) # * act_dim = 4
+            self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed)) # * act_dim = 4
         elif env_name == 'vizdoom':
             self.act_encoder = nn.Sequential(nn.Embedding(act_dim, d_embed), nn.Tanh()) # * act_dim = 5
         elif env_name == 'atari':

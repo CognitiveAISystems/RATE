@@ -64,4 +64,4 @@ online_inference_config:
   corridor_length: 
 
 tensorboard_dir: "runs/TMaze_new_experiment"
-ckpt_dir: "TMaze_new/TMaze_new_src/checkpoints"
+# ckpt_dir: "TMaze_new/TMaze_new_src/checkpoints"

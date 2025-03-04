@@ -1,7 +1,7 @@
 wandb_config:
     project_name: "v2-RATE-MinigridMemory"
-    wwandb: False
-    wcomet: True
+    wwandb: True
+    wcomet: False
 
 data_config:
   gamma: 1.0
@@ -18,10 +18,12 @@ training_config:
   final_tokens: 1000000
   grad_norm_clip: 1.0 # 1.0
   epochs: 250 #250
-  ckpt_epoch: 25
+  ckpt_epoch: 2 # 25
   use_erl_stop: False
   # inference during training
   online_inference: True
+  log_last_segment_loss_only: False
+  use_cosine_decay: True
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
@@ -33,7 +35,6 @@ model_config:
   mode: "minigrid_memory"
   STATE_DIM: 3
   ACTION_DIM: 4 # 2 if OHE else 4
-  n_token: 10000 # vocab_size
   n_layer: 8 # 3 8
   n_head: 10 # 1 10
   n_head_ca: 2 # ! 2 | number of cross-attention heads
@@ -44,13 +45,17 @@ model_config:
   dropatt: 0.05 # 0.05
   mem_len: 180
   ext_len: 0 # 0
-  tie_weight: False
   num_mem_tokens: 15 # 5 d_head * nmt = diff params
   mem_at_end: True
   mrv_act: 'relu'
   skip_dec_ffn: True
 
+  padding_idx: -10 # None
+
 online_inference_config:
   use_argmax: False # False
   episode_timeout: 100 # 2100
   desired_return_1: 0.96 # 0.995 # 56.5
+
+tensorboard_dir: "runs/MinigridMemory_experiment"
+ckpt_dir: "MinigridMemory/MinigridMemory_src/checkpoints"
