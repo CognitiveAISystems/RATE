@@ -66,3 +66,4 @@ val_rate.ipynb
 ManiSkill/
 
 offline_rl_baselines/validation/*.ipynb
+src/
