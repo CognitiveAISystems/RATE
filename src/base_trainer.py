@@ -1,30 +1,26 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import wandb
-
 import os
 from datetime import datetime
 
-# TODO: change code to save .ckpt in the tb directory
 
 class BaseTrainer:
     def __init__(self, config):
         self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.wwandb = config["wandb_config"]["wwandb"]
-        # self.writer = SummaryWriter(log_dir=config.get("tensorboard_dir", "runs/experiment"))
+        self.wwandb = config["wandb"]["wwandb"]
 
-        # Create unique run directory with timestamp
-        base_dir = config.get("tensorboard_dir", "runs/experiment")
+        base_dir = config.get("tensorboard_dir", f"runs/{config['model']['env_name']}")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = config.get("run_name", "run")
-        self.run_dir = f"{base_dir}/{run_name}_{timestamp}"
+        group_name = config.get("group_name", "group")
+        exp_codename = config.get("experiment_codename", "exp")
+        self.run_dir = f"{base_dir}/{group_name}/{exp_codename}/{run_name}_{timestamp}"
         
-        # Create checkpoints and tensorboard logs subdirectories
         self.ckpt_dir = f"{self.run_dir}/checkpoints"
         os.makedirs(self.ckpt_dir, exist_ok=True)
         
-        # Initialize tensorboard writer with the run directory
         self.writer = SummaryWriter(log_dir=self.run_dir)
         
     def log(self, metrics, step=None):

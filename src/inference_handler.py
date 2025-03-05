@@ -1,17 +1,8 @@
-from tqdm import tqdm
 import torch
 import numpy as np
+
 from .base_trainer import BaseTrainer
 
-# T-Maze:
-from TMaze_new.TMaze_new_src.inference.val_tmaze import get_returns_TMaze
-from TMaze_new.TMaze_new_src.utils import seeds_list
-
-# VizDoom:
-from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
-
-# Minigrid-Memory:
-from MinigridMemory.MinigridMemory_src.inference.val_minigridmemory import get_returns_MinigridMemory
 
 reds = [2, 3, 6, 8, 9, 10, 11, 14, 15, 16, 17, 18, 20, 21, 25, 26, 27, 28, 29, 31, 38, 40, 41, 42, 45,
         46, 49, 50, 51, 52, 53, 54, 55, 58, 59, 60, 61, 63, 64, 67, 68, 70, 72, 73, 74, 77, 80, 82, 84, 
@@ -26,12 +17,15 @@ greens = [0, 1, 4, 5, 7, 12, 13, 19, 22, 23, 24, 30, 32, 33, 34, 35, 36, 37, 39,
           209, 210, 212, 215, 216, 218, 219, 220, 221, 223, 224, 225]
 
 
-
 class InferenceHandler(BaseTrainer):
     @staticmethod
     def perform_mini_inference_tmaze(self, episode_timeout, corridor_length, text=None):
+        from validation.val_tmaze import get_returns_TMaze
+        from utils.set_seed import seeds_list
+
         self.model.eval()
         with torch.no_grad():
+            desired_reward = 1.0
             goods, bads = 0, 0
             timers = []
             rewards = []
@@ -41,17 +35,17 @@ class InferenceHandler(BaseTrainer):
                 episode_return, act_list, t, _, delta_t, attn_map = \
                     get_returns_TMaze(
                         model=self.model,
-                        ret=self.config["data_config"]["desired_reward"],
+                        ret=desired_reward,
                         seed=seeds_list[iii],
                         episode_timeout=episode_timeout,
                         corridor_length=corridor_length,
-                        context_length=self.config["training_config"]["context_length"],
+                        context_length=self.config["training"]["context_length"],
                         device=self.device,
                         config=self.config,
                         create_video=False,
                     )
 
-                if episode_return == self.config["data_config"]["desired_reward"]:
+                if episode_return == desired_reward:
                     goods += 1
                 else:
                     bads += 1
@@ -78,11 +72,13 @@ class InferenceHandler(BaseTrainer):
 
     @staticmethod
     def perform_mini_inference_vizdoom(self, episode_timeout, text=None):
+        from src.validation.val_vizdoom_two_colors import get_returns_VizDoom
+
         self.model.eval()
         with torch.no_grad():
             FRAME_SKIP = 2
             def optimize_pillar(color, seeds, config):
-                for ret in [config["online_inference_config"]["desired_return_1"]]:
+                for ret in [config["online_inference"]["desired_return_1"]]:
                     returns = []
                     ts = []
                     for i in range(len(seeds)):
@@ -92,10 +88,10 @@ class InferenceHandler(BaseTrainer):
                                 ret=ret,
                                 seed=seeds[i], 
                                 episode_timeout=episode_timeout, 
-                                context_length=self.config["training_config"]["context_length"], 
+                                context_length=self.config["training"]["context_length"], 
                                 device=self.device, 
                                 config=self.config,
-                                use_argmax=self.config["online_inference_config"]["use_argmax"],
+                                use_argmax=self.config["online_inference"]["use_argmax"],
                                 create_video=False,
                             )
 
@@ -136,12 +132,14 @@ class InferenceHandler(BaseTrainer):
 
             if self.wwandb:
                 self.log({
-                    f"LifeTimeMean_{self.config['online_inference_config']['desired_return_1']}": total_ts, 
-                    f"ReturnsMean_{self.config['online_inference_config']['desired_return_1']}": total_returns
+                    f"LifeTimeMean_{self.config['online_inference']['desired_return_1']}": total_ts, 
+                    f"ReturnsMean_{self.config['online_inference']['desired_return_1']}": total_returns
                 })
 
     @staticmethod
     def perform_mini_inference_minigridmemory(self, episode_timeout, text=None):
+        from validation.val_minigridmemory import get_returns_MinigridMemory
+
         self.model.eval()
         with torch.no_grad():
             env_name = {'type': 'Minigrid', 'name': 'MiniGrid-MemoryS13Random-v0'}
@@ -149,7 +147,7 @@ class InferenceHandler(BaseTrainer):
                 seeds = np.arange(0, 100).tolist()
                 total_rew_mm = 0
                 cnt = 1
-                for ret in [self.config["online_inference_config"]["desired_return_1"]]:
+                for ret in [self.config["online_inference"]["desired_return_1"]]:
                     returns = []
                     ts = []
                     for i in range(len(seeds)):
@@ -160,12 +158,10 @@ class InferenceHandler(BaseTrainer):
                                 ret=ret, 
                                 seed=seeds[i], 
                                 episode_timeout=episode_timeout, 
-                                context_length=self.config["training_config"]["context_length"], 
+                                context_length=self.config["training"]["context_length"], 
                                 device=self.device, 
                                 config=self.config,
-                                mean=None,
-                                std=None,
-                                use_argmax=self.config["online_inference_config"]["use_argmax"],
+                                use_argmax=self.config["online_inference"]["use_argmax"],
                                 create_video=False,
                                 env_name=env_name,
                             )
@@ -186,3 +182,46 @@ class InferenceHandler(BaseTrainer):
                             f"LifeTimeMean_r_{ret}_l_{LENGTH}": lifetime_mean,
                             f"ReturnsMax_r_{ret}_l_{LENGTH}": returns_max,
                             f"ReturnsMean_r_{ret}_l_{LENGTH}": returns_mean})
+                        
+    @staticmethod
+    def perform_mini_inference_memorymaze(self, episode_timeout, text=None):
+        from src.validation.val_memory_maze import get_returns_MemoryMaze
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 20
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew_mm = 0
+            cnt = 1
+            for ret in [self.config["online_inference"]["desired_return_1"]]:
+                returns = []
+                ts = []
+                for i in range(len(seeds)):
+                    episode_return, act_list, t, _, _, attn_map, frames = \
+                        get_returns_MemoryMaze(
+                            model=self.model, 
+                            ret=ret, seed=seeds[i],
+                            episode_timeout=episode_timeout,
+                            context_length=self.config["training"]["context_length"], 
+                            device=self.device,
+                            config=self.config,
+                            use_argmax=self.config["online_inference"]["use_argmax"],
+                            create_video=False
+                        )
+
+                    returns.append(episode_return)
+                    ts.append(t)
+                    total_rew_mm += episode_return
+                    curr_mean_ret = total_rew_mm / cnt
+                    cnt += 1
+                    self.pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+
+                returns_mean = np.mean(returns)
+                returns_max = np.max(returns)
+                lifetime_mean = np.mean(ts)
+
+                if self.wwandb:
+                    self.log({
+                        f"LifeTimeMean_{ret}": lifetime_mean,
+                        f"ReturnsMax_{ret}": returns_max,
+                        f"ReturnsMean_{ret}": returns_mean})

@@ -1,30 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import os
-
 import wandb
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import numpy as np
-from RATE import mem_transformer_v2_GTrXL
-
-from TMaze_new.TMaze_new_src.utils import seeds_list
-from pprint import pprint
-import math
-
-# T-Maze:
-from TMaze_new.TMaze_new_src.inference.val_tmaze import get_returns_TMaze
-
-# VizDoom:
-from VizDoom.VizDoom_src.inference.val_vizdoom import get_returns_VizDoom
-
+from RATE import RATE_model
 
 from .base_trainer import BaseTrainer
 from .inference_handler import InferenceHandler
-
-
+from utils.lr_scheduler import LearningRateScheduler
+from utils.colorize_dict import print_config
 
 
 class Trainer(BaseTrainer):
@@ -32,20 +17,21 @@ class Trainer(BaseTrainer):
         super().__init__(config)
         self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.wwandb = config["wandb_config"]["wwandb"]
+        self.wwandb = config["wandb"]["wwandb"]
         
         # Training state
         self.model = None
         self.optimizer = None
         self.scheduler = None
+        self.lr_scheduler = None
         self.raw_model = None
-        self.epochs_counter = 0
         self.wandb_step = 0
+        self.global_step = 0
         self.warmup_changed_to_decay = False
-        # self.ckpt_dir = config["ckpt_dir"]
-        self.log_last_segment_loss_only = config["training_config"]["log_last_segment_loss_only"]
-        self.use_cosine_decay = config["training_config"]["use_cosine_decay"]
-        self.env_name = config["model_config"]["mode"]
+        self.log_last_segment_loss_only = config["training"]["log_last_segment_loss_only"]
+        self.use_cosine_decay = config["training"]["use_cosine_decay"]
+        self.env_name = config["model"]["env_name"]
+        self.ckpt_epoch = config["training"]["ckpt_epoch"]
 
         if self.env_name == 'tmaze':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_tmaze
@@ -53,47 +39,39 @@ class Trainer(BaseTrainer):
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_vizdoom
         elif self.env_name == 'minigrid_memory':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_minigridmemory
+        elif self.env_name == 'memory_maze':
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_memorymaze
         
-        # Constants
-        self.EFFECTIVE_SIZE_BLOCKS = config["training_config"]["context_length"] * config["training_config"]["sections"]
-        self.BLOCKS_CONTEXT = config["training_config"]["context_length"]
-
-        # Initialize loggers
-        # self.writer = SummaryWriter(log_dir=config.get("tensorboard_dir", "runs/experiment"))
-        self.global_step = 0
+        self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
+        self.BLOCKS_CONTEXT = config["training"]["context_length"]
 
     def initialize_model(self):
-        self.model = mem_transformer_v2_GTrXL.MemTransformerLM(**self.config["model_config"])
+        self.model = RATE_model.MemTransformerLM(**self.config["model"])
+        self.lr_scheduler = LearningRateScheduler(self.config, self.train_dataloader)
+
         torch.nn.init.xavier_uniform_(self.model.r_w_bias)
         torch.nn.init.xavier_uniform_(self.model.r_r_bias)
         
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
-            lr=self.config["training_config"]["learning_rate"],
-            weight_decay=self.config["training_config"]["weight_decay"],
+            lr=self.config["training"]["learning_rate"],
+            weight_decay=self.config["training"]["weight_decay"],
             betas=(
-                self.config["training_config"]["beta_1"],
-                self.config["training_config"]["beta_2"],
+                self.config["training"]["beta_1"],
+                self.config["training"]["beta_2"],
             )
         )
         
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lambda steps: min((steps+1)/self.config["training_config"]["warmup_steps"], 1))
+        if not self.use_cosine_decay:
+            self.scheduler = self.lr_scheduler.make_warmup_scheduler(self.optimizer)
+
         self.raw_model = self.model.module if hasattr(self.model, "module") else self.model
         self.model.to(self.device)
         
         print(f"Model parameters: {sum(p.numel() for p in list(self.model.parameters()))}")
-        
         print("\nConfiguration:")
-        pprint(self.config, indent=2, width=80)
-        print("\n")
-
-    def make_decay_scheduler(self, optimizer):
-        decay_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1.0, end_factor=self.config['training_config']['lr_end_factor'], 
-            total_iters=len(self.train_dataloader) * self.config["training_config"]["epochs"] * self.config["training_config"]["max_segments"])
-        
-        return decay_scheduler
+        print_config(self.config)
+        print('\n')
 
     def calculate_losses(self, logits, target, masks, flag):
         metrics_to_log = {}
@@ -163,6 +141,12 @@ class Trainer(BaseTrainer):
                 ignore_index=-10
             )
 
+        elif self.env_name == 'memory_maze':
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1).long()
+            )
+
         additional_metrics = {}
 
         if metrics_to_log:
@@ -227,7 +211,12 @@ class Trainer(BaseTrainer):
                 episode_timeout=episode_timeout,
                 text=text
             )
-
+        elif self.env_name == 'memory_maze':
+            return self._perform_mini_inference_impl(
+                self,  # passing self as first argument
+                episode_timeout=episode_timeout,
+                text=text
+            )
 
     def log_metrics(self, loss, additional_metrics, flag, log_last_segment_only=True):
         """Helper function to log training metrics to wandb.
@@ -256,44 +245,9 @@ class Trainer(BaseTrainer):
                 }
                 self.log(filtered_metrics)
 
-
-# ! next two functions are for cosine decay after linear warmup:
-    def get_lr_multiplier(self, tokens):
-        """Calculate learning rate multiplier based on warmup and decay schedule.
-        
-        Args:
-            tokens (int): Current number of processed tokens
-            
-        Returns:
-            float: Learning rate multiplier
-        """
-        if tokens < self.config["training_config"]["warmup_steps"]:
-            # linear warmup
-            lr_mult = float(tokens) / float(max(1, self.config["training_config"]["warmup_steps"]))
-        else:
-            # cosine learning rate decay
-            progress = float(tokens - self.config["training_config"]["warmup_steps"]) / float(
-                max(1, self.config["training_config"]["final_tokens"] - self.config["training_config"]["warmup_steps"]))
-            lr_mult = max(self.config["training_config"]["lr_end_factor"], 
-                         0.5 * (1.0 + math.cos(math.pi * progress)))
-        return lr_mult
-
-    def update_learning_rate(self, tokens):
-        """Update the learning rate based on the number of processed tokens.
-        
-        Args:
-            tokens (int): Current number of processed tokens
-            
-        Returns:
-            float: Current learning rate
-        """
-        lr_mult = self.get_lr_multiplier(tokens)
-        lr = self.config["training_config"]["learning_rate"] * lr_mult
-        
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = lr
-            
-        return lr
+    def _should_checkpoint(self, epoch, tokens):
+        """Determine if checkpoint should be saved based on epoch or tokens."""
+        return ((epoch + 1) % int(self.config["training"]["ckpt_epoch"])) == 0 or epoch == self.config["training"]["epochs"] - 1 or epoch == 0
 
     def train(self, train_dataloader):
         self.train_dataloader = train_dataloader
@@ -304,7 +258,7 @@ class Trainer(BaseTrainer):
         self.model.train()
         it_counter = 0
         tokens = 0
-        self.pbar = tqdm(range(self.config["training_config"]["epochs"]))
+        self.pbar = tqdm(range(self.config["training"]["epochs"]))
 
         for epoch in self.pbar:
             self.epoch = epoch
@@ -353,16 +307,17 @@ class Trainer(BaseTrainer):
                     if is_train:
                         self.optimizer.zero_grad()
                         loss.backward(retain_graph=True)
-                        if self.config["training_config"]["grad_norm_clip"] is not None:
-                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config["training_config"]["grad_norm_clip"])
+                        if self.config["training"]["grad_norm_clip"] is not None:
+                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config["training"]["grad_norm_clip"])
                         self.optimizer.step()
-                        self.scheduler.step()  
+                        if not self.use_cosine_decay:
+                            self.scheduler.step()  
 
-                        tokens += (y1 >= 0).sum() # TODO: change to the padding_idx?
+                        tokens += (y1 >= 0).sum().item() # TODO: change to the padding_idx?
 
                         if self.use_cosine_decay:
                             # Update learning rate
-                            lr = self.update_learning_rate(tokens)
+                            lr = self.lr_scheduler.update_learning_rate(self.optimizer, tokens)
                             self.log({"learning_rate": lr})
                         else:
                             lr = self.optimizer.state_dict()['param_groups'][0]['lr']
@@ -372,58 +327,37 @@ class Trainer(BaseTrainer):
                         self.pbar.set_description(f"[train] ep {epoch+1} it {it} tTotal {loss.item():.2f} lr {lr:e} tokens, M {(tokens/1e6):.2f}")
                         
                 it_counter += 1 
-                self.epochs_counter += 1
 
-            if it_counter >= self.config["training_config"]["warmup_steps"] and not self.warmup_changed_to_decay:
-                self.scheduler = self.make_decay_scheduler(self.optimizer)
+            if it_counter >= self.config["training"]["warmup_steps"] and not self.warmup_changed_to_decay and not self.use_cosine_decay:
+                self.scheduler = self.lr_scheduler.make_decay_scheduler(self.optimizer)
                 self.warmup_changed_to_decay = True
                 
             # * Mini-inference at checkpoint
-            if ((epoch + 1) % int(self.config["training_config"]["ckpt_epoch"])) == 0 or epoch == self.config["training_config"]["epochs"] - 1 or epoch == 0:
-                if self.config["training_config"]["online_inference"]:
+            if self._should_checkpoint(epoch, tokens):
+                if self.config["training"]["online_inference"]:
                     if self.env_name == 'tmaze':
                         self.perform_mini_inference(
-                            episode_timeout=self.config["online_inference_config"]["episode_timeout"],
-                            corridor_length=self.config["online_inference_config"]["corridor_length"],
+                            episode_timeout=self.config["online_inference"]["episode_timeout"],
+                            corridor_length=self.config["online_inference"]["corridor_length"],
                             text=None,
                         )
-                    elif self.env_name == 'vizdoom':
+                    elif self.env_name in ['vizdoom', 'minigrid_memory', 'memory_maze']:
                         self.perform_mini_inference(
-                            episode_timeout=self.config["online_inference_config"]["episode_timeout"],
+                            episode_timeout=self.config["online_inference"]["episode_timeout"],
                             text=None,
                         )
-                    elif self.env_name == 'minigrid_memory':
-                       self.perform_mini_inference(
-                            episode_timeout=self.config["online_inference_config"]["episode_timeout"],
-                            text=None,
-                        )
-                
-                self.save_checkpoint()
+        
+                self.save_checkpoint()       
 
-            # Inference at all lengths at last epoch
-            if epoch == self.config["training_config"]["epochs"] - 1 and self.env_name == 'tmaze' and self.config["training_config"]["last_inference"]:
-                for _segments in [1, 2, 3, 5, 9, 16, 30]:
-                    _episode_timeout = 30 * _segments
-                    _corridor_length = 30 * _segments - 2
-                    self.perform_mini_inference(
-                        episode_timeout=_episode_timeout,
-                        corridor_length=_corridor_length,
-                        text=str(_segments)
-                    )
-            
-                self.model.train()
                 self.wandb_step += 1 
                 if self.wwandb:
                     self.log({"checkpoint_step": self.wandb_step})
 
-                
-
-        return self.model, self.wandb_step, self.optimizer, self.scheduler, self.raw_model, self.epochs_counter
+        return self.model
     
     def save_checkpoint(self):
         self.model.eval()
-        # torch.save(self.model.state_dict(), self.ckpt_dir + '/_save' + '_KTD.pth')
-        save_path = os.path.join(self.ckpt_dir, f'model_step_{self.wandb_step}_KTD.pth')
+        save_path = os.path.join(self.ckpt_dir, f'step_{self.wandb_step}.pth')
         torch.save(self.model.state_dict(), save_path)
         self.model.train()
 
@@ -445,14 +379,3 @@ class Trainer(BaseTrainer):
             
     def __del__(self):
         self.close()
-
-
-
-
-
-
-
-
-
-
-

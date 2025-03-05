@@ -1,0 +1,4 @@
+from .val_tmaze import get_returns_TMaze
+from .val_vizdoom_two_colors import get_returns_VizDoom
+from .val_minigridmemory import get_returns_MinigridMemory
+from .val_memory_maze import get_returns_MemoryMaze

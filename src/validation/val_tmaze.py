@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from envs.tmaze.tmaze import TMazeClassicPassive
-#from TMaze_new.TMaze_new_src.utils import set_seed
 
 @torch.no_grad()
 def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, rtgs=None, timestep=None, mem_tokens=1, saved_context=None):
@@ -13,16 +12,27 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
             actions = actions if actions.size(1) <= block_size else actions[:, -block_size:] # crop context if needed
         rtgs = rtgs if rtgs.size(1) <= block_size else rtgs[:, -block_size:] # crop context if needed
         
+        if saved_context is not None:
+            results = model(x_cond, actions, rtgs, None, timestep, *saved_context, mem_tokens=mem_tokens)
+        else:
+            results = model(x_cond, actions, rtgs, None, timestep, mem_tokens=mem_tokens) 
+        # logits = results[0][0][:,-1,:]
+        # mem_tokens = results[1]
+        # memory = results[0][2:]
 
-        results = model(x_cond, actions, None, rtgs, timestep) 
-        logits = results[0]
+        logits = results['logits'][:,-1,:]
+        memory = results['new_mems']
+        mem_tokens = results['mem_tokens']
+
+        attn_map = model.attn_map
         
-    return logits
+    return logits, mem_tokens, memory, attn_map
 
-def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, context_length, device, act_dim, config, create_video=False):
+def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, context_length, device, config, create_video=False):
     
     scale = 1
     channels = 5
+    hint_steps = 1
     max_ep_len = episode_timeout
 
     env = TMazeClassicPassive(episode_length=episode_timeout, corridor_length=corridor_length, penalty=0, seed=seed, goal_reward=ret)
@@ -49,28 +59,61 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     rews = []
     attentions = []
     states = state.to(device=device, dtype=torch.float32)
-    actions = torch.zeros((0, act_dim), device=device, dtype=torch.float32)
+    actions = torch.zeros((0, 1), device=device, dtype=torch.float32)
     rewards = torch.zeros(0, device=device, dtype=torch.float32)
     target_return = torch.tensor(ret, device=device, dtype=torch.float32).reshape(1, 1)
     sim_states = []
     episode_return, episode_length = 0, 0
 
+    mem_tokens = model.mem_tokens.repeat(1, 1, 1).detach() if model.mem_tokens is not None else None
+    model.cache = mem_tokens.clone() if mem_tokens is not None else None
+    
+    saved_context = None
     segment = 0
     prompt_steps = 0# 5
     act = None
     act_list= []
+
+    switcher = False
+    saved_mem = None
     
     for t in range(max_ep_len):
-        actions = torch.cat([actions, torch.zeros((1, act_dim), device=device)], dim=0)
+        actions = torch.cat([actions, torch.zeros((1, 1), device=device)], dim=0)
         rewards = torch.cat([rewards, torch.zeros(1, device=device)])
-
-        if actions.shape[0] > HISTORY_LEN:
-            segment+=1
-            
-            if prompt_steps==0:
-                actions = actions[1:,:]
-                states = states[:, 1:, :]
-                target_return = target_return[:,1:]
+        
+        act_new_segment = False
+        if config["model_mode"] != 'DT' and config["model_mode"] != 'DTXL':
+            if actions.shape[0] > HISTORY_LEN:
+                segment+=1
+                
+                if prompt_steps==0:
+                    actions = actions[-1:,:]
+                    states = states[:, -1:, :]
+                    target_return = target_return[:,-1:]
+                    
+                if t%(context_length)==0:
+                    if create_video:
+                        out = torch.norm(mem_tokens).item() if mem_tokens is not None else None
+                        print(f't: {t}, NEW MEMORY: {out}')
+                        
+                    mem_tokens = new_mem
+                    saved_context = new_notes
+                
+        else:
+            if actions.shape[0] > HISTORY_LEN:
+                segment+=1
+                
+                if prompt_steps==0:
+                    actions = actions[1:,:]
+                    states = states[:, 1:, :]
+                    target_return = target_return[:,1:]
+                    
+                if t%(context_length)==0:
+                    if create_video:
+                        out = torch.norm(mem_tokens).item() if mem_tokens is not None else None
+                        print(f't: {t}, NEW MEMORY: {out}')
+                    mem_tokens = new_mem
+                    saved_context = new_notes
                 
         if t==0:
             act_to_pass = None
@@ -79,27 +122,29 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
             if act_to_pass.shape[1] == 0:
                 act_to_pass = None 
         
-        sampled_action = sample(model=model,  
-                                x=states[:, :, 1:],
-                                block_size=HISTORY_LEN, 
-                                steps=1, 
-                                sample=True, 
-                                actions=act_to_pass, 
-                                rtgs=target_return.unsqueeze(-1))
+        sampled_action, new_mem, new_notes, attn_map = sample(model=model,  
+                                                        x=states[:, :, 1:],
+                                                        block_size=HISTORY_LEN, 
+                                                        steps=1, 
+                                                        sample=True, 
+                                                        actions=act_to_pass, 
+                                                        rtgs=target_return.unsqueeze(-1), 
+                                                        mem_tokens=mem_tokens, #torch.randn_like(mem_tokens),#mem_tokens,
+                                                        saved_context=saved_context)
+        
+        if t > 0 and t % (context_length-1) == 0 and switcher == False:
+            switcher = True
+            saved_mem = new_mem
 
-        probs = torch.softmax(sampled_action, dim=-1).squeeze()
-        if len(probs.shape) == 1:
-            probs.unsqueeze(0)
-        probs = probs[-1]
-        act = torch.argmax(probs).item()
-        # print(t, probs, act)
+        
+        act = torch.argmax(torch.softmax(sampled_action, dim=-1).squeeze()).item()
         if create_video:
-            print(t, "act", act, np.round(probs.detach().cpu().numpy(), 3), "\tstate:", int(where_i), states[:, -1:, :].detach().cpu().numpy())
+            print(t, "act", act, np.round(torch.softmax(sampled_action, dim=-1).squeeze().detach().cpu().numpy(), 3), "\tstate:", int(where_i), states[:, -1:, :].detach().cpu().numpy())
         actions[-1, :] = act
         act_list.append(act)
         state, reward, done, info = env.step(act)
 
-        if t < config["data_config"]["hint_steps"]-1:
+        if t < hint_steps-1:
             state[2] = mem_state2[2]
         
          # {x, y, hint} -> {x, y, hint, flag}
@@ -129,6 +174,9 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
         target_return = torch.cat([target_return, pred_return.reshape(1, 1)], dim=1)
         episode_return += reward
         episode_length += 1
+        
+        if (t+1) % (context_length) == 0 and t > 0:
+            attentions.append(attn_map)
             
         if done:
             if create_video == True:
@@ -150,4 +198,4 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
         print(f"Final position: [{int(where_i)}, {int(np.round(states.squeeze()[-1].tolist()[0 if channels == 3 else 1]))}] / [{int(corridor_length)}, {int(mem_state)}]")
         print("\n")
         
-    return reward, act_list, t, np.array(out_states).squeeze(), delta_t, None
+    return reward, act_list, t, np.array(out_states).squeeze(), delta_t, attentions

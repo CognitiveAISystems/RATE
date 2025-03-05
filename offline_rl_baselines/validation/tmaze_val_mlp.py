@@ -15,8 +15,8 @@ from mlp_agent_cql_bc import DecisionMLP
 import yaml
 import argparse
 from tqdm import tqdm
-from TMaze_new.TMaze_new_src.utils.tmaze import TMazeClassicPassive
-from TMaze_new.TMaze_new_src.utils import seeds_list
+from envs.tmaze.tmaze import TMazeClassicPassive
+from src.utils.set_seed import seeds_list
 import numpy as np
 from tqdm import tqdm
 import os

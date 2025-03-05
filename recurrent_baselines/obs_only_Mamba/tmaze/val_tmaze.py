@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from TMaze_new.TMaze_new_src.utils.tmaze import TMazeClassicPassive
+from envs.tmaze.tmaze import TMazeClassicPassive
 #from TMaze_new.TMaze_new_src.utils import set_seed
 
 @torch.no_grad()

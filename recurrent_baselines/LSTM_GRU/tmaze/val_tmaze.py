@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from TMaze_new.TMaze_new_src.utils.tmaze import TMazeClassicPassive
+from envs.tmaze.tmaze import TMazeClassicPassive
 
 
 def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, context_length, device, act_dim, config, create_video=False):
