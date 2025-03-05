@@ -71,3 +71,4 @@ offline_rl_baselines/validation/*.ipynb
 data/
 runs/
 _vizdoom/
+.nfs*
