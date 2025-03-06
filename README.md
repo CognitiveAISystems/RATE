@@ -62,7 +62,16 @@ bash run_experiments/Memory_Maze/run_trxl_memory_maze.sh
 
 ```
 
+## Data collection
+Experiments with T-Maze can be run without data collection. For other experiments, you need to collect data. Here we provide scripts for data collection for ViZDoom-Two-Colors and Minigrid-Memory.
 
+```bash
+# Create data for ViZDoom-Two-Colors:
+python3 src/additional/gen_vizdoom_data/gen_vizdoom_data.py
+
+# Create data for Minigrid-Memory:
+python3 src/additional/gen_minigrid_memory_data/gen_minigrid_memory_data.py
+```
 
 ## Citation
 If you find our work useful, please cite our paper:

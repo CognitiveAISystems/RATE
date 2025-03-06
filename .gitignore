@@ -72,3 +72,12 @@ data/
 runs/
 _vizdoom/
 .nfs*
+
+
+ActionAssociativeRetrieval/
+Atari/
+MuJoCo/
+ManiSkill/
+offline_rl_baselines/
+readme_img/
+recurrent_baselines/

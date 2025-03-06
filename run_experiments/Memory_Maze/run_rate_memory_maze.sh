@@ -5,7 +5,7 @@ python3 src/train.py \
     --wandb.project-name='RATE-Memory-Maze' \
     --wandb.wwandb \
     --data.gamma=1.0 \
-    --data.path-to-dataset='../../../../../../../workspace-SR006.nfs2/Egor_C/MemoryMaze_data/iterative_data/' \
+    --data.path-to-dataset='data/Memory_Maze/' \
     --training.learning-rate=0.0003 \
     --training.lr-end-factor=0.1 \
     --training.beta-1=0.9 \

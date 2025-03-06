@@ -5,7 +5,7 @@ python3 src/train.py \
     --wandb.project-name='RATE-ViZDoom-Two-Colors' \
     --wandb.wwandb \
     --data.gamma=1.0 \
-    --data.path-to-dataset='../../RATE/VizDoom/VizDoom_data/iterative_data/' \
+    --data.path-to-dataset='data/ViZDoom_Two_Colors/' \
     --training.learning-rate=0.0003 \
     --training.lr-end-factor=0.1 \
     --training.beta-1=0.9 \
