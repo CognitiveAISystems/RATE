@@ -81,3 +81,5 @@ ManiSkill/
 offline_rl_baselines/
 readme_img/
 recurrent_baselines/
+
+!requirements/
