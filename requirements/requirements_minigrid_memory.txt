@@ -1,0 +1,12 @@
+pip==21
+setuptools==65.5.1
+wheel==0.38.0
+gymnasium==0.29.0
+docopt==0.6.2
+einops==0.4.1
+gym==0.18.3
+gym-minigrid==1.0.2
+moviepy==1.0.3
+matplotlib==3.5
+numpy==1.23.5
+ruamel.yaml==0.18.10 # If you have problems installing via pip, try installing via conda
