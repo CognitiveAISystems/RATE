@@ -83,3 +83,7 @@ readme_img/
 recurrent_baselines/
 
 !requirements/*
+
+popgym/*
+run.yaml
+src/additional/gen_popgym_data/results/*
