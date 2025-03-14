@@ -8,8 +8,9 @@ from RATE import RATE_model
 
 from .base_trainer import BaseTrainer
 from .inference_handler import InferenceHandler
-from utils.lr_scheduler import LearningRateScheduler
-from utils.colorize_dict import print_config
+from src.utils.lr_scheduler import LearningRateScheduler
+from src.utils.colorize_dict import print_config
+from src.utils.additional_data_processors import coords_to_idx, idx_to_coords
 
 
 class Trainer(BaseTrainer):
@@ -32,6 +33,9 @@ class Trainer(BaseTrainer):
         self.use_cosine_decay = config["training"]["use_cosine_decay"]
         self.env_name = config["model"]["env_name"]
         self.ckpt_epoch = config["training"]["ckpt_epoch"]
+        self.video_path = None
+
+        self.env = None
 
         if self.env_name == 'tmaze':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_tmaze
@@ -41,11 +45,55 @@ class Trainer(BaseTrainer):
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_minigridmemory
         elif self.env_name == 'memory_maze':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_memorymaze
-        
+        elif 'popgym' in self.env_name:
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_popgym
+        elif "mikasa_robo" in self.env_name:
+            import mikasa_robo_suite
+            from mikasa_robo_suite.dataset_collectors.get_mikasa_robo_datasets import env_info
+            from mikasa_robo_suite.dataset_collectors.get_dataset_collectors_ckpt import FlattenRGBDObservationWrapper
+            from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
+            from mani_skill.utils.wrappers.record import RecordEpisode
+            from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+            import gymnasium as gym
+
+            env_name = self.config["model"]["env_name"].split("_")[-1]
+            env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
+
+            state_wrappers_list, episode_timeout = env_info(env_name)
+            print(f"Episode timeout: {episode_timeout}")
+            for wrapper_class, wrapper_kwargs in state_wrappers_list:
+                env = wrapper_class(env, **wrapper_kwargs)
+
+            env = FlattenRGBDObservationWrapper(
+                env, rgb=True, depth=False, state=False, 
+                oracle=False, joints=False
+            )
+
+            if isinstance(env.action_space, gym.spaces.Dict):
+                env = FlattenActionSpaceWrapper(env) 
+
+            env = RecordEpisode(
+                env, output_dir=self.run_dir, save_trajectory=False, trajectory_name=f"", 
+                max_steps_per_video=self.config["online_inference"]["episode_timeout"], video_fps=30
+            )
+
+            self.env = ManiSkillVectorEnv(env, 1, ignore_terminations=True, record_metrics=True)
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mikasarobo
+
         self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
         self.BLOCKS_CONTEXT = config["training"]["context_length"]
 
     def initialize_model(self):
+
+        # !!!!
+        print('pre-run')
+        pre_run = next(iter(self.train_dataloader))
+        if "popgym" in self.env_name:
+            self.config["model"]["state_dim"] = pre_run[0].shape[-1]
+            print(pre_run[0].shape[-1])
+        # !!!!
+
+
         self.model = RATE_model.MemTransformerLM(**self.config["model"])
         self.lr_scheduler = LearningRateScheduler(self.config, self.train_dataloader)
 
@@ -147,6 +195,15 @@ class Trainer(BaseTrainer):
                 target.reshape(-1).long()
             )
 
+        elif 'popgym' in self.env_name:
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1).long(),
+                ignore_index=-10
+            )
+        elif "mikasa_robo" in self.env_name:
+            loss = F.mse_loss(logits, target)
+
         additional_metrics = {}
 
         if metrics_to_log:
@@ -167,6 +224,7 @@ class Trainer(BaseTrainer):
         Args:
             metrics (dict): Dictionary of metrics to log
             step (int, optional): Global step for tensorboard. If None, uses self.global_step
+            video (wandb.Video, optional): Video to log
         """
         if step is None:
             step = self.global_step
@@ -197,25 +255,13 @@ class Trainer(BaseTrainer):
                 self,  # passing self as first argument
                 episode_timeout=episode_timeout,
                 corridor_length=env_specific_args['corridor_length'],
-                text=text
+                text=text, env=self.env
             )
-        elif self.env_name == 'vizdoom':
+        elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')):
             return self._perform_mini_inference_impl(
-                self,  # passing self as first argument
+                self,
                 episode_timeout=episode_timeout,
-                text=text
-            )
-        elif self.env_name == 'minigrid_memory':
-            return self._perform_mini_inference_impl(
-                self,  # passing self as first argument
-                episode_timeout=episode_timeout,
-                text=text
-            )
-        elif self.env_name == 'memory_maze':
-            return self._perform_mini_inference_impl(
-                self,  # passing self as first argument
-                episode_timeout=episode_timeout,
-                text=text
+                text=text, env=self.env
             )
 
     def log_metrics(self, loss, additional_metrics, flag, log_last_segment_only=True):
@@ -295,7 +341,7 @@ class Trainer(BaseTrainer):
                         logits = res['logits']
                         memory = res['new_mems']
                         mem_tokens = res['mem_tokens']
-
+                        
                         loss, additional_metrics = self.calculate_losses(logits, target=y1, masks=masks1, flag=flag)
 
                         if self.wwandb:
@@ -312,9 +358,9 @@ class Trainer(BaseTrainer):
                         self.optimizer.step()
                         if not self.use_cosine_decay:
                             self.scheduler.step()  
-
+                        
                         tokens += (y1 >= 0).sum().item() # TODO: change to the padding_idx?
-
+                        
                         if self.use_cosine_decay:
                             # Update learning rate
                             lr = self.lr_scheduler.update_learning_rate(self.optimizer, tokens)
@@ -325,13 +371,13 @@ class Trainer(BaseTrainer):
                         self.log({"learning_rate": lr})
 
                         self.pbar.set_description(f"[train] ep {epoch+1} it {it} tTotal {loss.item():.2f} lr {lr:e} tokens, M {(tokens/1e6):.2f}")
-                        
+                
                 it_counter += 1 
-
+            
             if it_counter >= self.config["training"]["warmup_steps"] and not self.warmup_changed_to_decay and not self.use_cosine_decay:
                 self.scheduler = self.lr_scheduler.make_decay_scheduler(self.optimizer)
                 self.warmup_changed_to_decay = True
-                
+            
             # * Mini-inference at checkpoint
             if self._should_checkpoint(epoch, tokens):
                 if self.config["training"]["online_inference"]:
@@ -339,12 +385,12 @@ class Trainer(BaseTrainer):
                         self.perform_mini_inference(
                             episode_timeout=self.config["online_inference"]["episode_timeout"],
                             corridor_length=self.config["online_inference"]["corridor_length"],
-                            text=None,
+                            text=None, env=self.env
                         )
-                    elif self.env_name in ['vizdoom', 'minigrid_memory', 'memory_maze']:
+                    elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')):
                         self.perform_mini_inference(
                             episode_timeout=self.config["online_inference"]["episode_timeout"],
-                            text=None,
+                            text=None, env=self.env
                         )
         
                 self.save_checkpoint()       

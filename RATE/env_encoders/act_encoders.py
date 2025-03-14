@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 
+
 class ActEncoder(nn.Module):
     def __init__(self, env_name, act_dim, d_embed):
         super().__init__()
@@ -23,7 +24,9 @@ class ActEncoder(nn.Module):
             self.act_encoder = nn.Sequential(nn.Embedding(act_dim, d_embed), nn.Tanh()) # * act_dim depends on the env
         elif env_name == 'mujoco':
             self.act_encoder = nn.Linear(act_dim, d_embed)
-        elif env_name == 'maniskill-pushcube':
-            self.act_encoder = nn.Linear(act_dim, d_embed)
+        elif 'popgym' in env_name:
+            self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed)) # * act_dim depends on the env
+        elif "mikasa_robo" in env_name:
+            self.act_encoder = nn.Linear(act_dim, d_embed) # * act_dim = 8
         else:
             raise ValueError(f"Unknown environment: {env_name}")

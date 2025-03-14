@@ -1,7 +1,5 @@
 import numpy as np
 import gym
-import matplotlib.pyplot as plt
-import os
 
 """
 T-Maze: originated from (Bakker, 2001) and earlier neuroscience work, 

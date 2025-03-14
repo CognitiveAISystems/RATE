@@ -1,5 +1,8 @@
 import torch
 import numpy as np
+from collections import defaultdict
+import glob
+import os
 
 from .base_trainer import BaseTrainer
 
@@ -19,7 +22,7 @@ greens = [0, 1, 4, 5, 7, 12, 13, 19, 22, 23, 24, 30, 32, 33, 34, 35, 36, 37, 39,
 
 class InferenceHandler(BaseTrainer):
     @staticmethod
-    def perform_mini_inference_tmaze(self, episode_timeout, corridor_length, text=None):
+    def perform_mini_inference_tmaze(self, episode_timeout, corridor_length, text=None, env=None):
         from validation.val_tmaze import get_returns_TMaze
         from utils.set_seed import seeds_list
 
@@ -71,7 +74,7 @@ class InferenceHandler(BaseTrainer):
                     })
 
     @staticmethod
-    def perform_mini_inference_vizdoom(self, episode_timeout, text=None):
+    def perform_mini_inference_vizdoom(self, episode_timeout, text=None, env=None):
         from src.validation.val_vizdoom_two_colors import get_returns_VizDoom
 
         self.model.eval()
@@ -137,7 +140,7 @@ class InferenceHandler(BaseTrainer):
                 })
 
     @staticmethod
-    def perform_mini_inference_minigridmemory(self, episode_timeout, text=None):
+    def perform_mini_inference_minigridmemory(self, episode_timeout, text=None, env=None):
         from validation.val_minigridmemory import get_returns_MinigridMemory
 
         self.model.eval()
@@ -184,7 +187,7 @@ class InferenceHandler(BaseTrainer):
                             f"ReturnsMean_r_{ret}_l_{LENGTH}": returns_mean})
                         
     @staticmethod
-    def perform_mini_inference_memorymaze(self, episode_timeout, text=None):
+    def perform_mini_inference_memorymaze(self, episode_timeout, text=None, env=None):
         from src.validation.val_memory_maze import get_returns_MemoryMaze
 
         self.model.eval()
@@ -225,3 +228,106 @@ class InferenceHandler(BaseTrainer):
                         f"LifeTimeMean_{ret}": lifetime_mean,
                         f"ReturnsMax_{ret}": returns_max,
                         f"ReturnsMean_{ret}": returns_mean})
+                    
+    @staticmethod
+    def perform_mini_inference_popgym(self, episode_timeout, text=None, env=None):
+        from src.validation.val_popgym import get_returns_POPGym
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 20
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew_mm = 0
+            cnt = 1
+            for ret in [self.config["online_inference"]["desired_return_1"]]:
+                returns = []
+                ts = []
+                for i in range(len(seeds)):
+                    episode_return, act_list, t, _, _, attn_map, frames = \
+                        get_returns_POPGym(
+                            model=self.model, 
+                            ret=ret, seed=seeds[i],
+                            episode_timeout=episode_timeout,
+                            context_length=self.config["training"]["context_length"], 
+                            device=self.device,
+                            config=self.config,
+                            use_argmax=self.config["online_inference"]["use_argmax"],
+                            create_video=False
+                        )
+
+                    returns.append(episode_return)
+                    ts.append(t)
+                    total_rew_mm += episode_return
+                    curr_mean_ret = total_rew_mm / cnt
+                    cnt += 1
+                    self.pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+
+                returns_mean = np.mean(returns)
+                returns_max = np.max(returns)
+                lifetime_mean = np.mean(ts)
+
+                if self.wwandb:
+                    self.log({
+                        f"LifeTimeMean_{ret}": lifetime_mean,
+                        f"ReturnsMax_{ret}": returns_max,
+                        f"ReturnsMean_{ret}": returns_mean})
+    @staticmethod
+    def perform_mini_inference_mikasarobo(self, episode_timeout, text=None, env=None):
+        from src.validation.val_mikasa_robo import get_returns_MIKASARobo
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 10
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew_mm = 0
+            cnt = 1
+            for ret in [self.config["online_inference"]["desired_return_1"]]:
+                returns = []
+                ts = []
+
+                eval_metrics = defaultdict(list)
+                metrics_maniskill = {
+                    "success_once": [],
+                    "return": [],
+                    "episode_len": [],
+                    "reward": [],
+                    "success_at_end": []
+                }
+
+
+                
+                for i in range(len(seeds)):
+                    episode_return, _, t, _, _, _, _, eval_metrics = \
+                        get_returns_MIKASARobo(
+                            env=env, 
+                            model=self.model, 
+                            ret=ret, seed=seeds[i], 
+                            episode_timeout=episode_timeout, 
+                            context_length=self.config["training"]["context_length"], 
+                            device=self.device, 
+                            config=self.config,
+                            use_argmax=self.config["online_inference"]["use_argmax"],
+                            create_video=False
+                        )
+
+                    returns.append(episode_return)
+                    ts.append(t)
+                    
+                    for k, v in eval_metrics.items():
+                        if v:
+                            mean = torch.stack(v).float().mean().item()
+                            metrics_maniskill[k].append(mean)
+
+                    total_rew_mm += episode_return
+                    curr_mean_ret = total_rew_mm / max(cnt, 1)
+                    cnt += 1
+
+                    self.pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+
+                for k, v in metrics_maniskill.items():
+                    metrics_maniskill[k] = np.mean(v)
+                if self.wwandb:
+                    print(f"Metrics: {metrics_maniskill}")
+                    for k, v in metrics_maniskill.items():
+                        self.log({f"eval/eval_{k}_mean": v})
+                    self.log({f"eval/return_to_go": ret})

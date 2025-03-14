@@ -28,7 +28,7 @@ os.environ["GRPC_TRACE"] = ""
 class CLIArgs:
     """Options that will be passed through tyro."""
     env_idx: Optional[int] = None  # Environment index (1-48) to collect dataset
-    number_of_episodes: int = 3000
+    number_of_episodes: int = 3000 # 3000
     group: Optional[int] = None  # Group number (1-4) to collect datasets. If -1, collect all datasets sequentially
 
 # python3 src/additional/gen_popgym_data/gen_popgym_data.py

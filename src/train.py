@@ -5,10 +5,10 @@ import wandb
 import os, sys
 from coolname import generate_slug
 
-from utils.reconfigure_config import configure_model_architecture
-from utils.set_seed import set_seed
-from utils.dataloaders import create_dataloader
-from utils.get_intro import IntroRenderer
+from src.utils.reconfigure_config import configure_model_architecture
+from src.utils.set_seed import set_seed
+from src.utils.dataloaders import create_dataloader
+from src.utils.get_intro import IntroRenderer
 
 
 from pathlib import Path
@@ -31,6 +31,7 @@ class WandbConfig:
 class DataConfig:
     gamma: float = 1.0
     path_to_dataset: Optional[str] = None
+    max_length: Optional[int] = None
 
 @dataclass
 class TrainingConfig:
@@ -112,6 +113,8 @@ def add_env_specific_info_to_config(config):
             config["training"]["sections"] = 1
     elif config["model"]["env_name"] == "memory_maze":
         config["data"]["only_non_zero_rewards"] = True
+    elif "popgym" in config["model"]["env_name"]:
+        config["training"]["max_segments"] = config["training"]["sections"]
 
     return config
 
@@ -141,20 +144,13 @@ if __name__ == "__main__":
         config["group_name"] = f"exp_{config['text']}_model_{config['model_mode']}_arch_{config['arch_mode']}"
         config['run_name'] = f"{config['group_name']}_RUN_{RUN}"
 
-        if config["wandb"]["wwandb"]:
-            run = wandb.init(
-                project=config['wandb']['project_name'], 
-                name=config['run_name'], 
-                group=config["group_name"], 
-                config=config, 
-                save_code=True, 
-                reinit=True
-            )
+        if config["data"]["max_length"] is None:
+            max_length = max_length
+        else:
+            max_length = config["data"]["max_length"]
 
         train_dataloader = create_dataloader(config, max_length, SEGMENT_LENGTH)
 
         trainer = Trainer(config)
         model = trainer.train(train_dataloader)
-
-        if config["wandb"]["wwandb"]:
-            run.finish()
+        trainer.cleanup()

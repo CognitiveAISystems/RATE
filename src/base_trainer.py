@@ -3,7 +3,7 @@ from torch.utils.tensorboard import SummaryWriter
 import wandb
 import os
 from datetime import datetime
-
+import json
 
 class BaseTrainer:
     def __init__(self, config):
@@ -17,9 +17,24 @@ class BaseTrainer:
         group_name = config.get("group_name", "group")
         exp_codename = config.get("experiment_codename", "exp")
         self.run_dir = f"{base_dir}/{group_name}/{exp_codename}/{run_name}_{timestamp}"
+
+        if self.wwandb:
+            self.wandb_run = wandb.init(
+                project=config['wandb']['project_name'],
+                name=f"{run_name}_{timestamp}",
+                group=group_name,
+                config=config,
+                save_code=True,
+                reinit=True
+            )
         
         self.ckpt_dir = f"{self.run_dir}/checkpoints"
         os.makedirs(self.ckpt_dir, exist_ok=True)
+
+        # Save config to the run directory
+        config_path = os.path.join(self.run_dir, "config.json")
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=4)
         
         self.writer = SummaryWriter(log_dir=self.run_dir)
         
@@ -45,3 +60,5 @@ class BaseTrainer:
     def cleanup(self):
         if hasattr(self, 'writer'):
             self.writer.close()
+        if self.wwandb and hasattr(self, 'wandb_run'):
+            self.wandb_run.finish()

@@ -4,3 +4,4 @@ from .dataloaders import create_dataloader
 from .get_intro import IntroRenderer
 from .colorize_dict import print_config
 from .lr_scheduler import LearningRateScheduler
+from .additional_data_processors import coords_to_idx, idx_to_coords

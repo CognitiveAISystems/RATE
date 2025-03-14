@@ -8,3 +8,5 @@ tyro==0.9.16
 coolname==2.2.0
 gym==0.25.2
 wget==3.2
+# gputil
+# psutil

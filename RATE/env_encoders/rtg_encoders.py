@@ -22,7 +22,9 @@ class RTGEncoder(nn.Module):
             self.rtg_encoder = nn.Sequential(nn.Linear(1, d_embed), nn.Tanh())
         elif env_name == 'mujoco':
             self.rtg_encoder = nn.Linear(1, d_embed)
-        elif env_name == 'maniskill-pushcube':
+        elif 'popgym' in env_name:
+            self.rtg_encoder = nn.Linear(1, d_embed)
+        elif "mikasa_robo" in env_name:
             self.rtg_encoder = nn.Linear(1, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

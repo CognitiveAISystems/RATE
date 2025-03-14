@@ -11,6 +11,7 @@ from popgym.baselines.ray_models.ray_gru import GRU
 from popgym.core.env import POPGymEnv
 import numpy as np
 from dataclasses import dataclass
+from typing import Optional
 import tyro
 from ray.rllib.algorithms.ppo import PPO
 import os
@@ -26,8 +27,9 @@ os.environ["GRPC_TRACE"] = ""
 @dataclass
 class CLIArgs:
     """Options that will be passed through tyro."""
-    env_idx: int = 39
-    number_of_episodes: int = 3000
+    env_idx: Optional[int] = None  # Environment index (1-48) to collect dataset
+    number_of_episodes: int = 100 # 3000
+    group: Optional[int] = None  # Group number (1-4) to collect datasets. If -1, collect all datasets sequentially
 
 # python3 src/additional/gen_popgym_data/gen_popgym_data.py
 # Define paths
@@ -180,14 +182,17 @@ def collect_data_by_env_idx(env_idx, number_of_episodes=3000):
     agent = PPO(config=config)
     agent.restore(checkpoint_path)
 
+    total_rewards = []
+    total_lengths = []
+
     for i in tqdm(range(number_of_episodes)):
         obsList, actList, rewList, doneList = [], [], [], []
         
         # Run inference
         episode_reward = 0
         obs, info = env.reset()
-        # print(obs, info)
         done = False
+        episode_length = 0  # Track the length of the episode
 
         # Initialize RNN state
         state = agent.get_policy().get_initial_state()
@@ -208,42 +213,93 @@ def collect_data_by_env_idx(env_idx, number_of_episodes=3000):
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             episode_reward += reward
+            episode_length += 1  # Increment episode length
             rewList.append(reward)
             actList.append(action)
             doneList.append(int(done))
-            # print(obs, action, reward, done, info, episode_reward)
-            # env.render()
 
-        # print(f"Total episode reward: {episode_reward}")
-        DATA = {
-            'obs': np.array(obsList),
-            'action': np.array(actList),
-            'reward': np.array(rewList),
-            'done': np.array(doneList)
-        }
+        # Collect statistics
+        total_rewards.append(episode_reward)
+        total_lengths.append(episode_length)
 
-        file_path = f'data/POPGym/{env_name}/'
-        os.makedirs(file_path, exist_ok=True)
-        np.savez(file_path + f'train_data_{i}.npz', **DATA)
         env.close()
+
+    # Calculate averages over the last 100 episodes
+    avg_length = np.mean(total_lengths[-100:]) if len(total_lengths) >= 100 else np.mean(total_lengths)
+    avg_min_reward = np.min(total_rewards[-100:]) if len(total_rewards) >= 100 else np.min(total_rewards)
+    avg_mean_reward = np.mean(total_rewards[-100:]) if len(total_rewards) >= 100 else np.mean(total_rewards)
+    avg_max_reward = np.max(total_rewards[-100:]) if len(total_rewards) >= 100 else np.max(total_rewards)
+
+    print(f"Average Episode Length: {avg_length}")
+    print(f"Average Minimum Reward: {avg_min_reward}")
+    print(f"Average Mean Reward: {avg_mean_reward}")
+    print(f"Average Maximum Reward: {avg_max_reward}")
+
+    # Write statistics to CSV file
+    import csv
+
+    # Check if the file exists to write headers only once
+    file_exists = os.path.isfile('100_steps_stats.csv')
+
+    with open('100_steps_stats.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        # Write header if the file is new
+        if not file_exists:
+            writer.writerow(['Environment Name', 'Average Length', 'Average Minimum Reward', 'Average Mean Reward', 'Average Maximum Reward'])
+        writer.writerow([env_name, avg_length, avg_min_reward, avg_mean_reward, avg_max_reward])
+        
 
     agent.stop()
     ray.shutdown()
 
 
 def main(args: CLIArgs):
-    # 1) Скачиваем чекпоинты
+
+    assert (args.group is not None and args.env_idx is None) or (args.group is None and args.env_idx is not None)
+
+    # 1) Download checkpoints
     download_ppo_checkpoints()
 
-    # 2) Переименовываем директории
+    # 2) Rename directories
     rename_ppo_dirs()
 
-    # 3) Собираем датасет
-    collect_data_by_env_idx(args.env_idx, number_of_episodes=args.number_of_episodes)
+    if args.group is not None:
+        print('\nDataset will be collected by groups, not by environment index\n')
+        group_1 = np.arange(0, 12)
+        group_2 = np.arange(12, 24)
+        group_3 = np.arange(24, 36)
+        group_4 = np.arange(36, 48)
+        
+        groups = {
+            1: group_1,
+            2: group_2,
+            3: group_3,
+            4: group_4
+        }
+
+        if args.group not in groups and args.group != -1:
+            raise ValueError(f"Group must be between 1 and 4 (or -1 to collect all datasets sequentially), got {args.group}")
+        
+        # 3) Collect dataset
+        print(f"Collecting datasets for group {args.group}")
+
+        if args.group != -1:
+            for env_idx in groups[args.group]:
+                collect_data_by_env_idx(env_idx, number_of_episodes=args.number_of_episodes)
+        else:
+            for group_idx in groups:
+                print(f"Collecting datasets for group {group_idx}")
+                for env_idx in groups[group_idx]:
+                    collect_data_by_env_idx(env_idx, number_of_episodes=args.number_of_episodes)
+
+    else:
+        print(f"Collecting datasets for environment index {args.env_idx}")
+
+        # 3) Collect dataset
+        collect_data_by_env_idx(args.env_idx, number_of_episodes=args.number_of_episodes)
 
 
 # src/additional/gen_popgym_data/results/PPO
 if __name__ == "__main__":
     # python3 src/additional/gen_popgym_data/gen_popgym_data.py --args.env-idx=1 --args.number-of-episodes=3000
-
     tyro.cli(main)

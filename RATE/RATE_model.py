@@ -79,7 +79,7 @@ class MemTransformerLM(nn.Module):
         self._set_mrv_act(mrv_act)
             
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EMBEDDINGS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # tmaze, aar, memory_maze, minigrid_memory, vizdoom, atari, mujoco, maniskill-pushcube
+        # tmaze, aar, memory_maze, minigrid_memory, vizdoom, atari, mujoco, maniskill-pushcube, popgym(48envs)
 
         self.state_encoder      = ObsEncoder(self.env_name, state_dim, self.d_embed).obs_encoder
         self.action_embeddings  = ActEncoder(self.env_name, act_dim, self.d_embed).act_encoder
@@ -245,7 +245,6 @@ class MemTransformerLM(nn.Module):
         for name, module in self.action_embeddings.named_children():
             if isinstance(module, nn.Embedding):
                 use_long = True
-
         if use_long:
             actions = actions.to(dtype=torch.long, device=actions.device)
             if self.padding_idx is not None:
@@ -301,6 +300,7 @@ class MemTransformerLM(nn.Module):
         hidden, new_mems = self._forward(token_embeddings, mems=mems, mem_tokens=mem_tokens) #hidden.shape = (total_len, bs, emb_dim) new_mems[i].shape = (MEM_LEN, bs, d_model)
         hidden = hidden.permute(1,0,2)
         num_mem = self.num_mem_tokens
+        
         if self.num_mem_tokens > 0:
             if self.mem_at_end:
                 tgt_len = token_embeddings.shape[1]
@@ -329,7 +329,7 @@ class MemTransformerLM(nn.Module):
             logits = logits[:, 1::3, :]
         else:
             logits = logits[:, 1:, :]    
-     
+        
         output = {
             'logits': logits,
             'new_mems': new_mems if new_mems is not None else None,

@@ -59,17 +59,19 @@ class ObsEncoder(nn.Module):
             )
         elif env_name == 'mujoco':
             self.obs_encoder = nn.Linear(state_dim, d_embed)
-        elif env_name == 'maniskill-pushcube':
+        elif 'popgym' in env_name:
+            self.obs_encoder = nn.Linear(state_dim, d_embed)
+        elif "mikasa_robo" in env_name:
             self.obs_encoder = nn.Sequential(
-                nn.Conv2d(3, 32, 8, stride=4, padding=0), 
+                nn.Conv2d(6, 32, 8, stride=4, padding=0),
                 nn.ReLU(),
-                nn.Conv2d(32, 64, 4, stride=2, padding=0), 
+                nn.Conv2d(32, 64, 4, stride=2, padding=0),
                 nn.ReLU(),
-                nn.Conv2d(64, 64, 3, stride=1, padding=0), 
+                nn.Conv2d(64, 64, 3, stride=1, padding=0),
                 nn.ReLU(),
-                nn.Flatten(),
+                nn.Flatten(), 
                 nn.Linear(9216, d_embed),
-                nn.Tanh(),
+                nn.Tanh()
             )
         else:
             raise ValueError(f"Unknown environment: {env_name}")

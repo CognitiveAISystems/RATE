@@ -27,7 +27,8 @@ def create_dataloader(config, max_length, segment_length):
             train_dataset,
             batch_size=config["training"]["batch_size"],
             shuffle=True,
-            num_workers=8
+            num_workers=8,
+            pin_memory=True
         )
         
         print(f"Train: {len(train_dataloader) * config['training']['batch_size']} trajectories (first {max_length} steps)")
@@ -48,7 +49,8 @@ def create_dataloader(config, max_length, segment_length):
             train_dataset, 
             batch_size=config["training"]["batch_size"], 
             shuffle=True, 
-            num_workers=8
+            num_workers=8,
+            pin_memory=True
         )
 
         print(f"Train: {len(train_dataloader) * config['training']['batch_size']} trajectories (first {max_length} steps)")
@@ -69,11 +71,56 @@ def create_dataloader(config, max_length, segment_length):
             train_dataset, 
             batch_size=config["training"]["batch_size"], 
             shuffle=True, 
-            num_workers=8
+            num_workers=8,
+            pin_memory=True
         )
 
         print(f"Train: {len(train_dataset)} trajectories ({max_length} steps / trajectory)")
 
+        return train_dataloader
+    
+    elif "popgym" in config["model"]["env_name"]:
+        from envs_datasets import POPGymDataset
+
+        train_dataset = POPGymDataset(
+            config["data"]["path_to_dataset"],  
+            gamma=config["data"]["gamma"], 
+            max_length=max_length,
+            env_name=config["model"]["env_name"]
+        )
+        
+        train_dataloader = DataLoader(
+            train_dataset, 
+            batch_size=config["training"]["batch_size"], 
+            shuffle=True, 
+            num_workers=8,
+            pin_memory=True
+        )
+
+        print(f"Train: {len(train_dataset)} trajectories ({max_length} steps / trajectory)")
+
+        return train_dataloader
+    
+    elif "mikasa_robo" in config["model"]["env_name"]:
+        from envs_datasets import MIKASARoboIterDataset
+
+        train_dataset = MIKASARoboIterDataset(
+            config["data"]["path_to_dataset"],
+            gamma=config["data"]["gamma"],
+            max_length=max_length,
+            normalize=1
+        )
+        
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_size=config["training"]["batch_size"],
+            shuffle=True,
+            num_workers=8,
+            pin_memory=True
+        )
+        
+        print(f"Train: {len(train_dataloader) * config['training']['batch_size']} trajectories (first {max_length} steps)")
+        
         return train_dataloader
 
     elif config["model"]["env_name"] == "tmaze":
@@ -111,7 +158,8 @@ def create_dataloader(config, max_length, segment_length):
             train_dataset, 
             batch_size=config["training"]["batch_size"],
             shuffle=True,
-            num_workers=4
+            num_workers=4,
+            pin_memory=True
         )
 
         print(f'Number of considered segments: {config["max_n_final"]}, dataset length: {len(combined_dataloader.dataset)}, Train: {len(train_dataset)}')

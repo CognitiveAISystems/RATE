@@ -13,6 +13,8 @@ Refactoring status (what is available now):
 - ✅ ViZDoom-Two-Colors
 - ✅ Minigrid-Memory
 - ✅ Memory-Maze
+- 🔄 POPGym
+- 🔄 [MIKASA-Robo](https://github.com/CognitiveAISystems/MIKASA-Robo)
 - 🔄 Action-Associative-Retrieval
 - 🔄 Atari
 - 🔄 MuJoCo
@@ -21,7 +23,7 @@ Refactoring status (what is available now):
 
 ```bash
 # Install main dependencies
-pip install -r requirements/requirements_main.txt
+pip install -e .
 
 # Install additional dependencies for ViZDoom-Two-Colors
 pip install -r requirements/requirements_vizdoom_two_colors.txt
@@ -31,6 +33,12 @@ pip install -r requirements/requirements_minigrid_memory.txt
 
 # Install additional dependencies for Memory-Maze
 pip install -r requirements/requirements_memory_maze.txt
+
+# Install additional dependencies for PopGym [TBD]
+TBD
+
+# Install additional dependencies for MIKASA-Robo
+pip install mikasa_robo_suite
 ```
 
 ## Run experiments

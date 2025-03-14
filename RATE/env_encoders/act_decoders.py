@@ -25,11 +25,13 @@ class ActDecoder(nn.Module):
             self.act_decoder = nn.Sequential(
                 nn.Linear(d_embed, act_dim), 
                 nn.Tanh(),
-                )
-        elif env_name == 'maniskill-pushcube':
+            )
+        elif 'popgym' in env_name:
+            self.act_decoder = nn.Linear(d_embed, act_dim, bias=False) # * act_dim depends on the env
+        elif "mikasa_robo" in env_name:
             self.act_decoder = nn.Sequential(
                 nn.Linear(d_embed, act_dim), 
                 nn.Tanh(),
-                )
+            )
         else:
             raise ValueError(f"Unknown environment: {env_name}")
