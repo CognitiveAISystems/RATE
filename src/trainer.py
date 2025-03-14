@@ -48,36 +48,13 @@ class Trainer(BaseTrainer):
         elif 'popgym' in self.env_name:
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_popgym
         elif "mikasa_robo" in self.env_name:
-            import mikasa_robo_suite
-            from mikasa_robo_suite.dataset_collectors.get_mikasa_robo_datasets import env_info
-            from mikasa_robo_suite.dataset_collectors.get_dataset_collectors_ckpt import FlattenRGBDObservationWrapper
-            from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
-            from mani_skill.utils.wrappers.record import RecordEpisode
-            from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
-            import gymnasium as gym
-
-            env_name = self.config["model"]["env_name"].split("_")[-1]
-            env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
-
-            state_wrappers_list, episode_timeout = env_info(env_name)
-            print(f"Episode timeout: {episode_timeout}")
-            for wrapper_class, wrapper_kwargs in state_wrappers_list:
-                env = wrapper_class(env, **wrapper_kwargs)
-
-            env = FlattenRGBDObservationWrapper(
-                env, rgb=True, depth=False, state=False, 
-                oracle=False, joints=False
+            # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
+            # the inference function in a separate way
+            from src.envs.mikasa_robo.mikasa_robo_initialization import InitializeMikasaRoboEnv
+            self.env = InitializeMikasaRoboEnv.create_mikasa_robo_env(
+                self.config["model"]["env_name"], self.run_dir, self.config
             )
 
-            if isinstance(env.action_space, gym.spaces.Dict):
-                env = FlattenActionSpaceWrapper(env) 
-
-            env = RecordEpisode(
-                env, output_dir=self.run_dir, save_trajectory=False, trajectory_name=f"", 
-                max_steps_per_video=self.config["online_inference"]["episode_timeout"], video_fps=30
-            )
-
-            self.env = ManiSkillVectorEnv(env, 1, ignore_terminations=True, record_metrics=True)
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mikasarobo
 
         self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
@@ -417,11 +394,15 @@ class Trainer(BaseTrainer):
         """Explicit cleanup method"""
         if hasattr(self, 'writer'):
             self.writer.close()
+        if hasattr(self, 'env') and self.env is not None:
+            self.env.close()
             
     def close(self):
         """Explicit cleanup method"""
         if hasattr(self, 'writer'):
             self.writer.close()
+        if hasattr(self, 'env') and self.env is not None:
+            self.env.close()
             
     def __del__(self):
         self.close()
