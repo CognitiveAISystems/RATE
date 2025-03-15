@@ -150,6 +150,9 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
         
         state, reward, terminated, truncated, eval_infos = env.step(act) # state [H, W, C], need [C, H, W]
 
+        # * we work in discrete reward setting (for us reward is success_once)
+        reward = int(eval_infos['success'])
+
         done = torch.logical_or(terminated, truncated).item()
         if "final_info" in eval_infos:
             for k, v in eval_infos["final_info"]["episode"].items():
@@ -166,16 +169,14 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
         cur_state = state.to(device)
         states = torch.cat([states, cur_state], dim=1)
         rewards[-1] = reward
-        # pred_return = target_return[0,-1] - (reward/scale)
-        pred_return = target_return[0,-1] # * to not decrease return_to_go
+        pred_return = target_return[0,-1] - (reward/scale)
+        # pred_return = target_return[0,-1] # * to not decrease return_to_go
         target_return = torch.cat([target_return, pred_return.reshape(1, 1)], dim=1)
-        timesteps = torch.cat([timesteps,torch.ones((1, 1), device=device, dtype=torch.long) * (1)], dim=1)
+        timesteps = torch.cat([timesteps, torch.ones((1, 1), device=device, dtype=torch.long) * (1)], dim=1)
         episode_return += reward
         episode_length += 1
 
-        episode_return = eval_metrics['success_once'][-1] if len(eval_metrics['success_once']) > 0 else 0
-        episode_return = int(episode_return)
-        # print(f"Episode return: {episode_return}")
+        # print(t, reward, ret, episode_return, target_return[:, -1].item())
         
         if done:
             break  

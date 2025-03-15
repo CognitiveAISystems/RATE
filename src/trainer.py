@@ -394,15 +394,15 @@ class Trainer(BaseTrainer):
         """Explicit cleanup method"""
         if hasattr(self, 'writer'):
             self.writer.close()
-        if hasattr(self, 'env') and self.env is not None:
-            self.env.close()
+        # if hasattr(self, 'env') and self.env is not None:
+        #     self.env.close()
             
     def close(self):
         """Explicit cleanup method"""
         if hasattr(self, 'writer'):
             self.writer.close()
-        if hasattr(self, 'env') and self.env is not None:
-            self.env.close()
+        # if hasattr(self, 'env') and self.env is not None:
+        #     self.env.close()
             
     def __del__(self):
         self.close()

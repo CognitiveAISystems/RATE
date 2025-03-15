@@ -10,6 +10,9 @@ def print_config(config, indent_level=0):
         'RESET': '\033[1;0m'              # Reset
     }
     for key, value in config.items():
+        if key == 'run_metadata':
+            continue
+        
         color = COLORS.get(key, COLORS['RESET'])
         indent = "    " * indent_level
         

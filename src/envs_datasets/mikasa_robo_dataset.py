@@ -46,9 +46,11 @@ class MIKASARoboIterDataset(Dataset):
         # for idx in tqdm(range(100)):
         for idx in tqdm(range(len(self.file_list))):
             file_path = os.path.join(self.directory, self.file_list[idx])
-            data = np.load(file_path)
-            if data['rgb'].shape[0] <= self.max_length:
-                self.filtered_list.append(self.file_list[idx])
+            # data = np.load(file_path)
+            # if data['rgb'].shape[0] <= self.max_length:
+            self.filtered_list.append(self.file_list[idx])
+
+            if idx == 1000: break # TODO: remove after testing? mb 5k is too much???
 
     def __len__(self):
         return len(self.filtered_list)
@@ -56,9 +58,10 @@ class MIKASARoboIterDataset(Dataset):
     def __getitem__(self, idx):
         file_path = os.path.join(self.directory, self.filtered_list[idx])
         #print(file_path)
-        data = np.load(file_path)
+        # data = np.load(file_path)
+        data = np.load(file_path, mmap_mode='r')
 
-        s = data['rgb'].transpose(0, 3, 1, 2)
+        s = data['rgb'][:self.max_length].transpose(0, 3, 1, 2)
         j = data['joints']
         a = data['action']
         # r = data['reward']

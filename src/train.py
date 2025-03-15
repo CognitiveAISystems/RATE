@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 import tyro
+from tyro.conf import FlagConversionOff
 import wandb
 import os, sys
 from coolname import generate_slug
@@ -25,7 +26,7 @@ os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 @dataclass
 class WandbConfig:
     project_name: str = "v2-RATE-ViZDoom2C"
-    wwandb: bool = True
+    wwandb: FlagConversionOff[bool] = True
 
 @dataclass
 class DataConfig:
@@ -47,9 +48,9 @@ class TrainingConfig:
     grad_norm_clip: float = 1.0
     epochs: int = 100
     ckpt_epoch: int = 8
-    online_inference: bool = True
-    log_last_segment_loss_only: bool = False
-    use_cosine_decay: bool = True
+    online_inference: FlagConversionOff[bool] = True
+    log_last_segment_loss_only: FlagConversionOff[bool] = False
+    use_cosine_decay: FlagConversionOff[bool] = True
     context_length: int = 30  # if RATE/GRATE: L = L, if DT: L = sections * L
     sections: int = 3        # if RATE/GRATE: S = S, if DT: S = 1
 
@@ -69,14 +70,14 @@ class ModelConfig:
     mem_len: int = 300
     ext_len: int = 0
     num_mem_tokens: int = 5
-    mem_at_end: bool = True
+    mem_at_end: FlagConversionOff[bool] = True
     mrv_act: str = 'relu'
-    skip_dec_ffn: bool = False # toggled -> True else False
+    skip_dec_ffn: FlagConversionOff[bool] = False # toggled -> True else False
     padding_idx: Optional[int] = None
 
 @dataclass
 class OnlineInferenceConfig:
-    use_argmax: Optional[bool] = None
+    use_argmax: FlagConversionOff[Optional[bool]] = None
     episode_timeout: Optional[int] = None
     desired_return_1: Optional[float] = None
 
@@ -148,6 +149,8 @@ if __name__ == "__main__":
             max_length = max_length
         else:
             max_length = config["data"]["max_length"]
+
+        print(f"Max length: {max_length}")
 
         train_dataloader = create_dataloader(config, max_length, SEGMENT_LENGTH)
 

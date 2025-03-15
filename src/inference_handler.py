@@ -278,7 +278,8 @@ class InferenceHandler(BaseTrainer):
         self.model.eval()
         with torch.no_grad():
             SKIP_RETURN = 10
-            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            # seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            seeds = [2, 3, 1, 9, 0, 4]
             total_rew_mm = 0
             cnt = 1
             for ret in [self.config["online_inference"]["desired_return_1"]]:
@@ -331,3 +332,5 @@ class InferenceHandler(BaseTrainer):
                     for k, v in metrics_maniskill.items():
                         self.log({f"eval/eval_{k}_mean": v})
                     self.log({f"eval/return_to_go": ret})
+                    self.log({"success_once": metrics_maniskill['success_once']})
+

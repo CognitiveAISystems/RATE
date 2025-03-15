@@ -115,7 +115,8 @@ def create_dataloader(config, max_length, segment_length):
             train_dataset,
             batch_size=config["training"]["batch_size"],
             shuffle=True,
-            num_workers=8,
+            persistent_workers=True,
+            num_workers=4,
             pin_memory=True
         )
         

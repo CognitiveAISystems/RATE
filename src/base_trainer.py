@@ -4,6 +4,10 @@ import wandb
 import os
 from datetime import datetime
 import json
+import platform
+import subprocess
+import sys
+
 
 class BaseTrainer:
     def __init__(self, config):
@@ -30,6 +34,30 @@ class BaseTrainer:
         
         self.ckpt_dir = f"{self.run_dir}/checkpoints"
         os.makedirs(self.ckpt_dir, exist_ok=True)
+
+        run_metadata = {
+            "timestamp": timestamp,
+            "hostname": os.uname().nodename,
+            "python_version": platform.python_version(),
+            "torch_version": torch.__version__,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
+            "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+            "gpu_memory_total": f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f}GB" if torch.cuda.is_available() else None,
+            "cpu_count": os.cpu_count(),
+            "git_commit": subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip(),
+            "git_branch": subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).decode('ascii').strip(),
+            "git_dirty": bool(subprocess.check_output(['git', 'status', '--porcelain']).decode('ascii').strip()),
+            "command_line": " ".join(sys.argv),
+            "working_directory": os.getcwd(),
+            "environment_variables": {
+                "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES"),
+                "PYTHONPATH": os.environ.get("PYTHONPATH"),
+            },
+            "installed_packages": subprocess.check_output([sys.executable, '-m', 'pip', 'freeze']).decode('ascii').split('\n'),
+        }
+
+        config["run_metadata"] = run_metadata
 
         # Save config to the run directory
         config_path = os.path.join(self.run_dir, "config.json")
