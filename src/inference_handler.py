@@ -251,8 +251,7 @@ class InferenceHandler(BaseTrainer):
                             context_length=self.config["training"]["context_length"], 
                             device=self.device,
                             config=self.config,
-                            use_argmax=self.config["online_inference"]["use_argmax"],
-                            create_video=False
+                            use_argmax=self.config["online_inference"]["use_argmax"]
                         )
 
                     returns.append(episode_return)
@@ -271,6 +270,8 @@ class InferenceHandler(BaseTrainer):
                         f"LifeTimeMean_{ret}": lifetime_mean,
                         f"ReturnsMax_{ret}": returns_max,
                         f"ReturnsMean_{ret}": returns_mean})
+
+        self.model.to(self.device)
     @staticmethod
     def perform_mini_inference_mikasarobo(self, episode_timeout, text=None, env=None):
         from src.validation.val_mikasa_robo import get_returns_MIKASARobo
@@ -333,4 +334,6 @@ class InferenceHandler(BaseTrainer):
                         self.log({f"eval/eval_{k}_mean": v})
                     self.log({f"eval/return_to_go": ret})
                     self.log({"success_once": metrics_maniskill['success_once']})
-
+        
+        torch.cuda.empty_cache()
+        self.model.to(self.device)

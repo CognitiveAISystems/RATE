@@ -48,12 +48,12 @@ class Trainer(BaseTrainer):
         elif 'popgym' in self.env_name:
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_popgym
         elif "mikasa_robo" in self.env_name:
-            # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
-            # the inference function in a separate way
-            from src.envs.mikasa_robo.mikasa_robo_initialization import InitializeMikasaRoboEnv
-            self.env = InitializeMikasaRoboEnv.create_mikasa_robo_env(
-                self.config["model"]["env_name"], self.run_dir, self.config
-            )
+            # # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
+            # # the inference function in a separate way
+            # from src.envs.mikasa_robo.mikasa_robo_initialization import InitializeMikasaRoboEnv
+            # self.env = InitializeMikasaRoboEnv.create_mikasa_robo_env(
+            #     self.config["model"]["env_name"], self.run_dir, self.config
+            # )
 
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mikasarobo
 
@@ -67,7 +67,10 @@ class Trainer(BaseTrainer):
         pre_run = next(iter(self.train_dataloader))
         if "popgym" in self.env_name:
             self.config["model"]["state_dim"] = pre_run[0].shape[-1]
-            print(pre_run[0].shape[-1])
+            print('state_dim', pre_run[0].shape[-1], pre_run[0].shape)
+            if any(char in self.env_name for char in ['NoisyPositionOnlyPendulumMedium']):
+                self.config["model"]["act_dim"] = pre_run[1].shape[-1]
+            print('act_dim', pre_run[1].shape[-1], pre_run[1].shape)
         # !!!!
 
 
@@ -173,11 +176,14 @@ class Trainer(BaseTrainer):
             )
 
         elif 'popgym' in self.env_name:
-            loss = F.cross_entropy(
-                logits.reshape(-1, logits.size(-1)),
-                target.reshape(-1).long(),
-                ignore_index=-10
-            )
+            if any(char in self.env_name for char in ['NoisyPositionOnlyPendulumMedium']):
+                loss = F.mse_loss(logits, target)
+            else:
+                loss = F.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)),
+                    target.reshape(-1).long(),
+                    ignore_index=-10
+                )
         elif "mikasa_robo" in self.env_name:
             loss = F.mse_loss(logits, target)
 
@@ -365,10 +371,21 @@ class Trainer(BaseTrainer):
                             text=None, env=self.env
                         )
                     elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')):
+                        if "mikasa_robo" in self.env_name:
+                            # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
+                            # the inference function in a separate way
+                            from src.envs.mikasa_robo.mikasa_robo_initialization import InitializeMikasaRoboEnv
+                            self.env = InitializeMikasaRoboEnv.create_mikasa_robo_env(
+                                self.config["model"]["env_name"], self.run_dir, self.config
+                            )
+
                         self.perform_mini_inference(
                             episode_timeout=self.config["online_inference"]["episode_timeout"],
                             text=None, env=self.env
                         )
+
+                        if "mikasa_robo" in self.env_name:
+                            self.env.close()
         
                 self.save_checkpoint()       
 

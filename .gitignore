@@ -122,3 +122,4 @@ videos/
 runs/
 test.ipynb
 validate_mikasa_robo.ipynb
+run_all_experiments/

@@ -14,6 +14,7 @@ class InitializeMikasaRoboEnv:
         env_name = env_name.split("_")[-1]
         
         # Create base environment
+        # env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
         env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
 
         # Apply state wrappers

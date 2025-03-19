@@ -41,7 +41,7 @@ packages = ["src", "RATE"]
 [tool.setuptools.package-data]
 "RATE" = ["requirements/*.txt"]
 
-# Опционально: настройки для других инструментов
+
 [tool.black]
 line-length = 100
 target-version = ['py39']

@@ -38,6 +38,9 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
 
     set_seed(seed)
     scale = 1
+
+    model = model.cpu()
+    device = torch.device('cpu')
     
     # Reset environment and get initial state
     state_0, _ = env.reset(seed=seed)

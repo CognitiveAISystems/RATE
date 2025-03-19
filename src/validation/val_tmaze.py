@@ -66,7 +66,6 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     episode_return, episode_length = 0, 0
 
     mem_tokens = model.mem_tokens.repeat(1, 1, 1).detach() if model.mem_tokens is not None else None
-    model.cache = mem_tokens.clone() if mem_tokens is not None else None
     
     saved_context = None
     segment = 0
