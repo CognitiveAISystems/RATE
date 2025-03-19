@@ -3,7 +3,7 @@
 # * T-Maze
 python3 src/train.py \
     --wandb.project-name='RATE-T-Maze' \
-    --wandb.wwandb \
+    --wandb.wwandb=True \
     --data.gamma=1.0 \
     --data.path-to-dataset=None \
     --training.learning-rate=0.0003 \
@@ -17,9 +17,9 @@ python3 src/train.py \
     --training.grad-norm-clip=1.0 \
     --training.epochs=50 \
     --training.ckpt-epoch=10 \
-    --training.online-inference \
-    --training.log-last-segment-loss-only \
-    --training.no-use-cosine-decay \
+    --training.online-inference=True \
+    --training.log-last-segment-loss-only=True \
+    --training.use-cosine-decay=False \
     --training.context-length=30 \
     --training.sections=3 \
     --model.env-name='tmaze' \
@@ -36,9 +36,9 @@ python3 src/train.py \
     --model.mem-len=0 \
     --model.ext-len=0 \
     --model.num-mem-tokens=5 \
-    --model.mem-at-end \
+    --model.mem-at-end=True \
     --model.mrv-act='relu' \
-    --model.skip-dec-ffn \
+    --model.skip-dec-ffn=True \
     --model.padding-idx=-10 \
     --tensorboard-dir='runs/TMaze' \
     --model-mode='RATE' \

@@ -34,6 +34,7 @@ class Trainer(BaseTrainer):
         self.env_name = config["model"]["env_name"]
         self.ckpt_epoch = config["training"]["ckpt_epoch"]
         self.video_path = None
+        self.current_metric_value = None
 
         self.env = None
 
@@ -61,6 +62,9 @@ class Trainer(BaseTrainer):
         self.BLOCKS_CONTEXT = config["training"]["context_length"]
 
     def initialize_model(self):
+        # Clear any CUDA cache before initialization
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # !!!!
         print('pre-run')
@@ -71,14 +75,18 @@ class Trainer(BaseTrainer):
             if any(char in self.env_name for char in ['NoisyPositionOnlyPendulumMedium']):
                 self.config["model"]["act_dim"] = pre_run[1].shape[-1]
             print('act_dim', pre_run[1].shape[-1], pre_run[1].shape)
+        # Clear pre_run data
+        del pre_run
+        torch.cuda.empty_cache()
         # !!!!
-
 
         self.model = RATE_model.MemTransformerLM(**self.config["model"])
         self.lr_scheduler = LearningRateScheduler(self.config, self.train_dataloader)
 
         torch.nn.init.xavier_uniform_(self.model.r_w_bias)
         torch.nn.init.xavier_uniform_(self.model.r_r_bias)
+
+        self.model.to(self.device)
         
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -94,7 +102,7 @@ class Trainer(BaseTrainer):
             self.scheduler = self.lr_scheduler.make_warmup_scheduler(self.optimizer)
 
         self.raw_model = self.model.module if hasattr(self.model, "module") else self.model
-        self.model.to(self.device)
+        
         
         print(f"Model parameters: {sum(p.numel() for p in list(self.model.parameters()))}")
         print("\nConfiguration:")
@@ -384,8 +392,11 @@ class Trainer(BaseTrainer):
                             text=None, env=self.env
                         )
 
-                        if "mikasa_robo" in self.env_name:
+                        if "mikasa_robo" in self.env_name and self.env is not None:
                             self.env.close()
+                            self.env = None
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
         
                 self.save_checkpoint()       
 
@@ -396,9 +407,18 @@ class Trainer(BaseTrainer):
         return self.model
     
     def save_checkpoint(self):
+        """Save model checkpoint.
+        
+        Args:
+            is_best (bool): If True, save as best checkpoint
+        """
         self.model.eval()
         save_path = os.path.join(self.ckpt_dir, f'step_{self.wandb_step}.pth')
         torch.save(self.model.state_dict(), save_path)
+        if self.current_metric_value is not None and self.current_metric_value > self.best_metric_value:
+            self.best_metric_value = self.current_metric_value
+            save_path = os.path.join(self.best_checkpoint_path, f'best_checkpoint.pth') 
+            torch.save(self.model.state_dict(), save_path)
         self.model.train()
 
     def __enter__(self):
@@ -411,8 +431,11 @@ class Trainer(BaseTrainer):
         """Explicit cleanup method"""
         if hasattr(self, 'writer'):
             self.writer.close()
-        # if hasattr(self, 'env') and self.env is not None:
-        #     self.env.close()
+        if hasattr(self, 'env') and self.env is not None:
+            self.env.close()
+            self.env = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
             
     def close(self):
         """Explicit cleanup method"""

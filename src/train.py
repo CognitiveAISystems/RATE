@@ -10,11 +10,6 @@ from src.utils.reconfigure_config import configure_model_architecture
 from src.utils.set_seed import set_seed
 from src.utils.dataloaders import create_dataloader
 from src.utils.get_intro import IntroRenderer
-
-
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-
 from src.trainer import Trainer
 
 import yaml
@@ -25,7 +20,7 @@ os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 
 @dataclass
 class WandbConfig:
-    project_name: str = "v2-RATE-ViZDoom2C"
+    project_name: str = "RATE-MIKASA-Robo"
     wwandb: FlagConversionOff[bool] = True
 
 @dataclass
@@ -36,7 +31,6 @@ class DataConfig:
 
 @dataclass
 class TrainingConfig:
-    # --training.sections=3
     learning_rate: float = 3e-4
     lr_end_factor: float = 0.1
     beta_1: float = 0.9
@@ -80,6 +74,7 @@ class OnlineInferenceConfig:
     use_argmax: FlagConversionOff[Optional[bool]] = None
     episode_timeout: Optional[int] = None
     desired_return_1: Optional[float] = None
+    best_checkpoint_metric: Optional[str] = None
 
 @dataclass
 class Config:

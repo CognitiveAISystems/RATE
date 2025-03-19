@@ -123,3 +123,6 @@ runs/
 test.ipynb
 validate_mikasa_robo.ipynb
 run_all_experiments/
+plot_resources.py
+resource_usage.log
+run.sh

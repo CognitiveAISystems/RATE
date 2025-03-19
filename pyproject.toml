@@ -17,18 +17,16 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "gymnasium==0.29.1",
-    "mani_skill==3.0.0b15",
+    "torch==2.6.0",
     "matplotlib==3.9.2",
-    "numpy==1.23.5",
+    "numpy==1.26.4",
     "wandb==0.18.5",
     "tensorboard==2.18.0",
     "colorama==0.4.6",
     "tqdm",
     "pandas",
     "ipywidgets",
-    "vizdoom==1.2.2",
-    "opencv-python",
+    "coolname==2.2.0"
 ]
 
 [project.urls]

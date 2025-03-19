@@ -280,7 +280,7 @@ class InferenceHandler(BaseTrainer):
         with torch.no_grad():
             SKIP_RETURN = 10
             # seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
-            seeds = [2, 3, 1, 9, 0, 4]
+            # seeds = [2, 3, 1, 9, 0, 4]
             total_rew_mm = 0
             cnt = 1
             for ret in [self.config["online_inference"]["desired_return_1"]]:
@@ -297,13 +297,14 @@ class InferenceHandler(BaseTrainer):
                 }
 
 
-                
-                for i in range(len(seeds)):
+                # In ManiSkill we can process parallel episodes, and therfore
+                # we can proceess all eval epiisodes at once
+                for i in [42]:
                     episode_return, _, t, _, _, _, _, eval_metrics = \
                         get_returns_MIKASARobo(
                             env=env, 
                             model=self.model, 
-                            ret=ret, seed=seeds[i], 
+                            ret=ret, seed=i, 
                             episode_timeout=episode_timeout, 
                             context_length=self.config["training"]["context_length"], 
                             device=self.device, 
@@ -311,8 +312,8 @@ class InferenceHandler(BaseTrainer):
                             use_argmax=self.config["online_inference"]["use_argmax"],
                             create_video=False
                         )
+                    env.close()
 
-                    returns.append(episode_return)
                     ts.append(t)
                     
                     for k, v in eval_metrics.items():
@@ -324,7 +325,7 @@ class InferenceHandler(BaseTrainer):
                     curr_mean_ret = total_rew_mm / max(cnt, 1)
                     cnt += 1
 
-                    self.pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+                    self.pbar.set_description(f"Online inference_{ret}: [-] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
 
                 for k, v in metrics_maniskill.items():
                     metrics_maniskill[k] = np.mean(v)
@@ -334,6 +335,7 @@ class InferenceHandler(BaseTrainer):
                         self.log({f"eval/eval_{k}_mean": v})
                     self.log({f"eval/return_to_go": ret})
                     self.log({"success_once": metrics_maniskill['success_once']})
+                self.current_metric_value = metrics_maniskill['success_once']
         
         torch.cuda.empty_cache()
         self.model.to(self.device)

@@ -35,6 +35,12 @@ class BaseTrainer:
         self.ckpt_dir = f"{self.run_dir}/checkpoints"
         os.makedirs(self.ckpt_dir, exist_ok=True)
 
+        # Best metric (e.g. success_once for MIKASA-Robo) tracking
+        # Only if explicitly specified in online_inference config
+        self.best_metric_name = config.get("online_inference", {}).get("best_checkpoint_metric")
+        self.best_metric_value = -float('inf') if self.best_metric_name is not None else None
+        self.best_checkpoint_path = self.run_dir
+
         run_metadata = {
             "timestamp": timestamp,
             "hostname": os.uname().nodename,
@@ -72,6 +78,18 @@ class BaseTrainer:
             step = getattr(self, 'global_step', 0)
             if hasattr(self, 'global_step'):
                 self.global_step += 1
+
+        print(f"metrics: {metrics}")
+        # Check for new best metric value only if best_metric_name is set
+        if self.best_metric_name is not None and self.best_metric_name in metrics:
+            print('AAAAAAAAAAAAAA')
+            current_value = metrics[self.best_metric_name]
+            if current_value > self.best_metric_value:
+                print('BBBBBBBBBBBBBBBBBB')
+                self.best_metric_value = current_value
+                if hasattr(self, 'model'):  # Make sure model exists
+                    print('CCCCCCCCCCCCCCCCC')
+                    self.save_checkpoint(is_best=True)
 
         # Log to WandB
         if self.wwandb:

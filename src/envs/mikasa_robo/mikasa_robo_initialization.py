@@ -15,7 +15,7 @@ class InitializeMikasaRoboEnv:
         
         # Create base environment
         # env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
-        env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
+        env = gym.make(env_name, num_envs=16, obs_mode="rgb", render_mode="all", sim_backend="gpu")
 
         # Apply state wrappers
         state_wrappers_list, episode_timeout = env_info(env_name)
@@ -44,6 +44,6 @@ class InitializeMikasaRoboEnv:
         )
 
         # Wrap in vector env
-        env = ManiSkillVectorEnv(env, 1, ignore_terminations=True, record_metrics=True)
+        env = ManiSkillVectorEnv(env, 16, ignore_terminations=True, record_metrics=True)
 
         return env

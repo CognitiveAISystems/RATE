@@ -50,8 +50,6 @@ class MIKASARoboIterDataset(Dataset):
             # if data['rgb'].shape[0] <= self.max_length:
             self.filtered_list.append(self.file_list[idx])
 
-            if idx == 1000: break # TODO: remove after testing? mb 5k is too much???
-
     def __len__(self):
         return len(self.filtered_list)
 
@@ -62,7 +60,7 @@ class MIKASARoboIterDataset(Dataset):
         data = np.load(file_path, mmap_mode='r')
 
         s = data['rgb'][:self.max_length].transpose(0, 3, 1, 2)
-        j = data['joints']
+        # j = data['joints']
         a = data['action']
         # r = data['reward']
         r = data['success']
