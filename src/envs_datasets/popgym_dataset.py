@@ -4,8 +4,7 @@ import numpy as np
 import os
 from tqdm import tqdm
 import torch.nn.functional as F
-
-from utils.additional_data_processors import coords_to_idx, idx_to_coords
+from src.utils.additional_data_processors import coords_to_idx, idx_to_coords
 
 
 class POPGymDataset(Dataset):

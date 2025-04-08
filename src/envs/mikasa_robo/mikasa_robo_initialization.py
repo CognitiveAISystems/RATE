@@ -6,16 +6,18 @@ from mani_skill.utils.wrappers.flatten import FlattenActionSpaceWrapper
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
+
 class InitializeMikasaRoboEnv:
     @staticmethod
     def create_mikasa_robo_env(env_name, run_dir, config):
 
         # Extract actual env name from full name
         env_name = env_name.split("_")[-1]
+
+        envs_num = 20
         
         # Create base environment
-        # env = gym.make(env_name, num_envs=1, obs_mode="rgb", render_mode="all", sim_backend="gpu")
-        env = gym.make(env_name, num_envs=16, obs_mode="rgb", render_mode="all", sim_backend="gpu")
+        env = gym.make(env_name, num_envs=envs_num, obs_mode="rgb", render_mode="all", sim_backend="gpu")
 
         # Apply state wrappers
         state_wrappers_list, episode_timeout = env_info(env_name)
@@ -44,6 +46,6 @@ class InitializeMikasaRoboEnv:
         )
 
         # Wrap in vector env
-        env = ManiSkillVectorEnv(env, 16, ignore_terminations=True, record_metrics=True)
+        env = ManiSkillVectorEnv(env, envs_num, ignore_terminations=True, record_metrics=True)
 
         return env

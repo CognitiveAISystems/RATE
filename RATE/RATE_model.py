@@ -13,37 +13,37 @@ from RATE.blocks import RelPartialLearnableDecoderLayer, PositionalEmbedding
 from RATE.env_encoders import ObsEncoder, ActEncoder, RTGEncoder, ActDecoder
 
 class MemTransformerLM(nn.Module):
-    def __init__(self, 
-                 state_dim, 
-                 act_dim,
-                 n_layer, 
-                 n_head,
-                 n_head_ca, 
-                 d_model, 
-                 d_head, 
-                 d_inner,
-                 dropout, 
-                 dropatt, 
-                 pre_lnorm=False, ### ! LayerNorm(W)
-                 tgt_len=None, 
-                 ext_len=None, 
-                 mem_len=None, 
-                 num_mem_tokens=None, 
-                 read_mem_from_cache=False, 
-                 mem_at_end=True,
-                 same_length=False,
-                 clamp_len=-1, 
-                 sample_softmax=-1,
-                 max_ep_len=1000,
-                 env_name='mujoco',
-                 use_gate=False,
-                 use_stable_version=False,
-                 mrv_act='relu',
-                 skip_dec_ffn=False,
-                 
-                 padding_idx=None,
-                 
-                 ):
+    def __init__(
+            self, 
+        state_dim, 
+        act_dim,
+        n_layer, 
+        n_head,
+        n_head_ca, 
+        d_model, 
+        d_head, 
+        d_inner,
+        dropout, 
+        dropatt, 
+        pre_lnorm=False,
+        tgt_len=None, 
+        ext_len=None, 
+        mem_len=None, 
+        num_mem_tokens=None, 
+        read_mem_from_cache=False, 
+        mem_at_end=True,
+        same_length=False,
+        clamp_len=-1, 
+        sample_softmax=-1,
+        max_ep_len=1000,
+        env_name='mujoco',
+        use_gate=False,
+        use_stable_version=False,
+        mrv_act='relu',
+        skip_dec_ffn=False,
+        padding_idx=None,
+        **kwargs
+    ):
         
         super(MemTransformerLM, self).__init__()
 
@@ -71,21 +71,16 @@ class MemTransformerLM(nn.Module):
         self.sample_softmax = sample_softmax
         self.same_length = same_length 
         self.clamp_len = clamp_len
-
-
         self.padding_idx = padding_idx
         self.act_dim = act_dim
 
         self._set_mrv_act(mrv_act)
             
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EMBEDDINGS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # tmaze, aar, memory_maze, minigrid_memory, vizdoom, atari, mujoco, maniskill-pushcube, popgym(48envs)
-
         self.state_encoder      = ObsEncoder(self.env_name, state_dim, self.d_embed).obs_encoder
         self.action_embeddings  = ActEncoder(self.env_name, act_dim, self.d_embed).act_encoder
         self.ret_emb            = RTGEncoder(self.env_name, self.d_embed).rtg_encoder
         self.head               = ActDecoder(self.env_name, act_dim, self.d_embed).act_decoder
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         self.init_mem_tokens()
 
@@ -215,9 +210,11 @@ class MemTransformerLM(nn.Module):
             dec_attn_mask = dec_attn_mask[:,:,None]
 
         hids = []
-        pos_seq = torch.arange(klen-1, -1, -1.0,
-                               device=word_emb.device,
-                               dtype=word_emb.dtype)
+        pos_seq = torch.arange(
+            klen-1, -1, -1.0,
+            device=word_emb.device,
+            dtype=word_emb.dtype
+        )
 
         if self.clamp_len > 0:
             pos_seq.clamp_(max=self.clamp_len)

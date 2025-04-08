@@ -1,4 +1,4 @@
-from .reconfigure_config import configure_model_architecture
+from .reconfigure_config import configure_model_architecture, add_env_specific_info_to_config
 from .set_seed import set_seed
 from .dataloaders import create_dataloader
 from .get_intro import IntroRenderer

@@ -126,7 +126,6 @@ def create_dataloader(config, max_length, segment_length):
 
     elif config["model"]["env_name"] == "tmaze":
         from envs_datasets import TMaze_data_generator, TMazeCombinedDataLoader
-        
         TMaze_data_generator(
             max_segments=config["training"]["max_segments"],
             multiplier=1000,

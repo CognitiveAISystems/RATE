@@ -3,7 +3,7 @@
 # * Minigrid-Memory
 python3 src/train.py \
     --wandb.project-name='RATE-Minigrid-Memory' \
-    --wandb.wwandb \
+    --wandb.wwandb=True \
     --data.gamma=1.0 \
     --data.path-to-dataset='data/Minigrid_Memory/' \
     --training.learning-rate=0.0003 \
@@ -17,9 +17,9 @@ python3 src/train.py \
     --training.grad-norm-clip=1.0 \
     --training.epochs=250 \
     --training.ckpt-epoch=25 \
-    --training.online-inference \
-    --training.no-log-last-segment-loss-only \
-    --training.use-cosine-decay \
+    --training.online-inference=True \
+    --training.log-last-segment-loss-only=False \
+    --training.use-cosine-decay=True \
     --training.context-length=10 \
     --training.sections=3 \
     --model.env-name='minigrid_memory' \
@@ -36,9 +36,9 @@ python3 src/train.py \
     --model.mem-len=0 \
     --model.ext-len=0 \
     --model.num-mem-tokens=15 \
-    --model.mem-at-end \
+    --model.mem-at-end=True \
     --model.mrv-act='no_act' \
-    --model.no-skip-dec-ffn \
+    --model.skip-dec-ffn=False \
     --model.padding-idx=-10 \
     --tensorboard-dir='runs/Minigrid_Memory' \
     --model-mode='RMT' \

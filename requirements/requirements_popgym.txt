@@ -1,0 +1,16 @@
+# pip==21
+# setuptools==65.5.1
+# wheel==0.38.0
+
+popgym==1.0.6
+popgym[navigation]
+popgym[baselines]
+# torch==2.6.0
+# ray[rllib]==2.3.0
+# tensorflow_probability==0.25.0
+gymnasium==0.29.0
+# gym==0.18.3
+numpy==1.23.5
+pydantic==1.10.21
+# gputil==1.4.0
+# huggingface_hub

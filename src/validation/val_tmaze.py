@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from envs.tmaze.tmaze import TMazeClassicPassive
+from src.envs.tmaze.tmaze import TMazeClassicPassive
 
 @torch.no_grad()
 def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, rtgs=None, timestep=None, mem_tokens=1, saved_context=None):

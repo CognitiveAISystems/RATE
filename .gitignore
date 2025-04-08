@@ -107,7 +107,7 @@ ActionAssociativeRetrieval/
 Atari/
 MuJoCo/
 ManiSkill/
-offline_rl_baselines/
+# offline_rl_baselines/
 readme_img/
 recurrent_baselines/
 
@@ -126,3 +126,10 @@ run_all_experiments/
 plot_resources.py
 resource_usage.log
 run.sh
+inference_results/
+old_offline_rl_baselines/
+try_inference.ipynb
+val_mikasa_from_ckpt.py
+val_mikasa_from_env_dir.py
+train_time/
+validate_speed/

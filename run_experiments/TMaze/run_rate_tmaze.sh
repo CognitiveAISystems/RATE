@@ -15,7 +15,7 @@ python3 src/train.py \
     --training.warmup-steps=100 \
     --training.final-tokens=10_000_000 \
     --training.grad-norm-clip=1.0 \
-    --training.epochs=50 \
+    --training.epochs=1 \
     --training.ckpt-epoch=10 \
     --training.online-inference=True \
     --training.log-last-segment-loss-only=True \
@@ -36,7 +36,7 @@ python3 src/train.py \
     --model.mem-len=0 \
     --model.ext-len=0 \
     --model.num-mem-tokens=5 \
-    --model.mem-at-end=True \
+    --model.mem-at-end=False \
     --model.mrv-act='relu' \
     --model.skip-dec-ffn=True \
     --model.padding-idx=-10 \
@@ -45,6 +45,6 @@ python3 src/train.py \
     --arch-mode='TrXL' \
     --start-seed=1 \
     --end-seed=10 \
-    --text='' \
+    --text='mem_at_end=False' \
     --min-n-final=1 \
     --max-n-final=3

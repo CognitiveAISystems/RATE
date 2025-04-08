@@ -23,10 +23,11 @@ dependencies = [
     "wandb==0.18.5",
     "tensorboard==2.18.0",
     "colorama==0.4.6",
-    "tqdm",
-    "pandas",
+    "tqdm==4.66.5",
+    "pandas==1.5.0",
     "ipywidgets",
-    "coolname==2.2.0"
+    "coolname==2.2.0",
+    "tyro==0.9.16"
 ]
 
 [project.urls]
@@ -34,7 +35,7 @@ dependencies = [
 "Repository" = "https://github.com/CognitiveAISystems/RATE.git"
 
 [tool.setuptools]
-packages = ["src", "RATE"]
+packages = ["src", "RATE", "offline_rl_baselines"]
 
 [tool.setuptools.package-data]
 "RATE" = ["requirements/*.txt"]

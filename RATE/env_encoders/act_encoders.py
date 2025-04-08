@@ -25,8 +25,16 @@ class ActEncoder(nn.Module):
         elif env_name == 'mujoco':
             self.act_encoder = nn.Linear(act_dim, d_embed)
         elif 'popgym' in env_name:
-            if any(char in env_name for char in ['NoisyPositionOnlyPendulumMedium']):
-                self.act_encoder = nn.Linear(act_dim, d_embed)
+            if any(char in env_name \
+                   for char in [
+                       'NoisyPositionOnlyPendulumEasy',
+                       'NoisyPositionOnlyPendulumMedium',
+                       'NoisyPositionOnlyPendulumHard',
+                       'PositionOnlyPendulumEasy',
+                       'PositionOnlyPendulumMedium',
+                       'PositionOnlyPendulumHard',
+                    ]):
+                self.act_encoder = nn.Sequential(nn.Linear(act_dim, d_embed), nn.Tanh())
             else:
                 self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed)) # * act_dim depends on the env
         elif "mikasa_robo" in env_name:

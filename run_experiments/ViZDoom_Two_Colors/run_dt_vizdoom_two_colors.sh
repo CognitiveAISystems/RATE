@@ -3,7 +3,7 @@
 # * ViZDoom-Two-Colors
 python3 src/train.py \
     --wandb.project-name='RATE-ViZDoom-Two-Colors' \
-    --wandb.wwandb \
+    --wandb.wwandb=True \
     --data.gamma=1.0 \
     --data.path-to-dataset='data/ViZDoom_Two_Colors/' \
     --training.learning-rate=0.0003 \
@@ -17,9 +17,9 @@ python3 src/train.py \
     --training.grad-norm-clip=1.0 \
     --training.epochs=100 \
     --training.ckpt-epoch=8 \
-    --training.online-inference \
-    --training.no-log-last-segment-loss-only \
-    --training.use-cosine-decay \
+    --training.online-inference=True \
+    --training.log-last-segment-loss-only=False \
+    --training.use-cosine-decay=True \
     --training.context-length=30 \
     --training.sections=3 \
     --model.env-name='vizdoom' \
@@ -36,9 +36,9 @@ python3 src/train.py \
     --model.mem-len=0 \
     --model.ext-len=0 \
     --model.num-mem-tokens=0 \
-    --model.mem-at-end \
+    --model.mem-at-end=False \
     --model.mrv-act='no_act' \
-    --model.no-skip-dec-ffn \
+    --model.skip-dec-ffn=False \
     --model.padding-idx=None \
     --tensorboard-dir='runs/ViZDoom_Two_Colors' \
     --model-mode='DT' \

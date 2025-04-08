@@ -1,7 +1,7 @@
 import torch
 
 # if not env.action_space.sample().shape == () -> action.unsqueeze(-1)
-# if any(game in env_name for game in ['Battleship', 'MineSweeperEasy']):
+# if any(game in env_name for game in ['Battleship', 'MineSweeper']):
 def coords_to_idx(action, board_size=8):
     # action shape: (batch_size, seq_length, 2) -> (batch_size, seq_length, 1)
     if len(action.shape) == 2:  # Single coordinate pair

@@ -2,15 +2,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
+import json
 import wandb
+import time
 from tqdm import tqdm
+
 from RATE import RATE_model
 
-from .base_trainer import BaseTrainer
-from .inference_handler import InferenceHandler
+from src.base_trainer import BaseTrainer
+from src.inference_handler import InferenceHandler
 from src.utils.lr_scheduler import LearningRateScheduler
 from src.utils.colorize_dict import print_config
-from src.utils.additional_data_processors import coords_to_idx, idx_to_coords
+
+from offline_rl_baselines.BC import BehaviorCloning
+from offline_rl_baselines.CQL import ConservativeQLearning
+from offline_rl_baselines.IQL import ImplicitQLearning
 
 
 class Trainer(BaseTrainer):
@@ -49,13 +55,6 @@ class Trainer(BaseTrainer):
         elif 'popgym' in self.env_name:
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_popgym
         elif "mikasa_robo" in self.env_name:
-            # # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
-            # # the inference function in a separate way
-            # from src.envs.mikasa_robo.mikasa_robo_initialization import InitializeMikasaRoboEnv
-            # self.env = InitializeMikasaRoboEnv.create_mikasa_robo_env(
-            #     self.config["model"]["env_name"], self.run_dir, self.config
-            # )
-
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mikasarobo
 
         self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
@@ -66,26 +65,38 @@ class Trainer(BaseTrainer):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        # !!!!
-        print('pre-run')
+        # Get the first batch from the dataloader to get the state and action dimensions
+        print('Pre-run:')
         pre_run = next(iter(self.train_dataloader))
         if "popgym" in self.env_name:
             self.config["model"]["state_dim"] = pre_run[0].shape[-1]
+            
+            # Update the config file with the new state_dim value
+            config_path = os.path.join(self.run_dir, "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    saved_config = json.load(f)
+                saved_config["model"]["state_dim"] = self.config["model"]["state_dim"]
+                with open(config_path, 'w') as f:
+                    json.dump(saved_config, f, indent=4)
             print('state_dim', pre_run[0].shape[-1], pre_run[0].shape)
-            if any(char in self.env_name for char in ['NoisyPositionOnlyPendulumMedium']):
-                self.config["model"]["act_dim"] = pre_run[1].shape[-1]
             print('act_dim', pre_run[1].shape[-1], pre_run[1].shape)
-        # Clear pre_run data
-        del pre_run
-        torch.cuda.empty_cache()
-        # !!!!
 
-        self.model = RATE_model.MemTransformerLM(**self.config["model"])
+        if self.config["model_mode"] in ["RATE", "DT", "RMT", "TrXL", "DTXL"]:
+            self.model = RATE_model.MemTransformerLM(**self.config["model"])
+            torch.nn.init.xavier_uniform_(self.model.r_w_bias)
+            torch.nn.init.xavier_uniform_(self.model.r_r_bias)
+        elif self.config["model_mode"] == "BC":
+            self.model = BehaviorCloning(**self.config["model"])
+        elif self.config["model_mode"] == "CQL":
+            self.model = ConservativeQLearning(**self.config["model"])
+        elif self.config["model_mode"] == "IQL":
+            self.model = ImplicitQLearning(**self.config["model"])
+        else:
+            raise ValueError(f"Invalid model type: {self.config['model_mode']}")
+
         self.lr_scheduler = LearningRateScheduler(self.config, self.train_dataloader)
-
-        torch.nn.init.xavier_uniform_(self.model.r_w_bias)
-        torch.nn.init.xavier_uniform_(self.model.r_r_bias)
-
+        
         self.model.to(self.device)
         
         self.optimizer = torch.optim.AdamW(
@@ -109,7 +120,7 @@ class Trainer(BaseTrainer):
         print_config(self.config)
         print('\n')
 
-    def calculate_losses(self, logits, target, masks, flag):
+    def calculate_losses(self, logits, target, masks, flag, q1_value=None, q2_value=None, cql_loss=None, v_value=None, iql_loss=None):
         metrics_to_log = {}
 
         if self.env_name == 'tmaze':
@@ -184,7 +195,15 @@ class Trainer(BaseTrainer):
             )
 
         elif 'popgym' in self.env_name:
-            if any(char in self.env_name for char in ['NoisyPositionOnlyPendulumMedium']):
+            if any(char in self.env_name \
+                   for char in [
+                       'NoisyPositionOnlyPendulumEasy',
+                       'NoisyPositionOnlyPendulumMedium',
+                       'NoisyPositionOnlyPendulumHard',
+                       'PositionOnlyPendulumEasy',
+                       'PositionOnlyPendulumMedium',
+                       'PositionOnlyPendulumHard',
+                    ]):
                 loss = F.mse_loss(logits, target)
             else:
                 loss = F.cross_entropy(
@@ -197,6 +216,26 @@ class Trainer(BaseTrainer):
 
         additional_metrics = {}
 
+        # Add IQL loss if available
+        if iql_loss is not None:
+            # IQL returns a dictionary of loss components
+            for loss_name, loss_value in iql_loss.items():
+                additional_metrics[f"iql_{loss_name}"] = loss_value
+            
+            # Use the total IQL loss for optimization
+            optimization_loss = loss  # BC loss is already included in IQL's update
+            additional_metrics["bc_loss"] = loss.item()
+            additional_metrics["total_loss"] = optimization_loss.item()
+        # Add CQL loss if available
+        elif cql_loss is not None:
+            additional_metrics["cql_loss"] = cql_loss
+            # Combine BC loss with CQL loss
+            optimization_loss = loss + cql_loss
+            additional_metrics["bc_loss"] = loss.item()
+            additional_metrics["total_loss"] = optimization_loss.item()
+        else:
+            optimization_loss = loss
+
         if metrics_to_log:
             for metric_name, metric_value in metrics_to_log.items():
                 if metric_value is not None:
@@ -204,8 +243,6 @@ class Trainer(BaseTrainer):
                         additional_metrics[metric_name] = metric_value.item()
                     else:
                         additional_metrics[metric_name] = metric_value
-        
-        optimization_loss = loss
         
         return optimization_loss, additional_metrics
 
@@ -298,12 +335,19 @@ class Trainer(BaseTrainer):
         self.pbar = tqdm(range(self.config["training"]["epochs"]))
 
         for epoch in self.pbar:
+            epoch_start_time = time.time()
             self.epoch = epoch
             is_train = True
             self.model.train()
+
+            not_ep = False
+            not_b = False
             
             for it, batch in enumerate(train_dataloader):
                 s, a, rtg, d, timesteps, masks = batch
+                if not not_ep:
+                    print('a', s.shape)
+                    not_ep = True
                 memory = None
                 mem_tokens = None
                 
@@ -318,6 +362,9 @@ class Trainer(BaseTrainer):
                     r1 = rtg[:,:,:][:, from_idx:to_idx, :].to(self.device).float() 
                     t1 = timesteps[:, from_idx:to_idx].to(self.device)
                     masks1 = masks[:, from_idx:to_idx].to(self.device)
+                    if not not_b:
+                        print('b', x1.shape)
+                        not_b = True
 
                     flag = 1 if block_part == max(block_part_range) else 0
                     
@@ -329,11 +376,54 @@ class Trainer(BaseTrainer):
                     with torch.set_grad_enabled(is_train):
                         res = self.model(x1, y1, r1, y1, t1, *memory, mem_tokens=mem_tokens, masks=masks1) if memory is not None \
                             else self.model(x1, y1, r1, y1, t1, mem_tokens=mem_tokens, masks=masks1)
-                        logits = res['logits']
-                        memory = res['new_mems']
-                        mem_tokens = res['mem_tokens']
                         
-                        loss, additional_metrics = self.calculate_losses(logits, target=y1, masks=masks1, flag=flag)
+                        logits = res['logits']
+                        memory = res.get('new_mems', None)
+                        mem_tokens = res.get('mem_tokens', None)
+
+                        # For IQL, we need to handle the case differently
+                        if self.config["model_mode"] == "IQL":
+                            # For IQL, we need next states for the value function update
+                            # We'll use the next states in the sequence
+                            if block_part < max(block_part_range):
+                                next_from_idx = (block_part + 1) * self.BLOCKS_CONTEXT
+                                next_to_idx = (block_part + 2) * self.BLOCKS_CONTEXT
+                                next_x = s[:, next_from_idx:next_to_idx, :].to(self.device)
+                            else:
+                                # For the last block, we'll just use the last state
+                                next_x = x1[:, -1:, :]
+                            
+                            # Extract rewards and terminals from the batch
+                            rewards = r1[:, :, 0]  # Assuming rewards are in the first channel
+                            terminals = d[:, from_idx:to_idx].to(self.device).float()
+                            
+                            # Call IQL update method
+                            if hasattr(self.model, 'update'):
+                                iql_loss = self.model.update(
+                                    observations=x1,
+                                    actions=y1,
+                                    next_observations=next_x,
+                                    rewards=rewards,
+                                    terminals=terminals
+                                )
+                                
+                                # Add IQL loss to the results
+                                res['iql_loss'] = iql_loss
+                        
+                        # Extract Q-values and CQL loss if available (for CQL model)
+                        q1_value = res.get('q1_value', None)
+                        q2_value = res.get('q2_value', None)
+                        cql_loss = res.get('cql_loss', None)
+                        
+                        # Extract IQL specific values if available
+                        v_value = res.get('v_value', None)
+                        iql_loss = res.get('iql_loss', None)
+                        
+                        loss, additional_metrics = self.calculate_losses(
+                            logits, target=y1, masks=masks1, flag=flag,
+                            q1_value=q1_value, q2_value=q2_value, cql_loss=cql_loss,
+                            v_value=v_value, iql_loss=iql_loss
+                        )
 
                         if self.wwandb:
                             self.log_metrics(
@@ -342,13 +432,15 @@ class Trainer(BaseTrainer):
                             )
 
                     if is_train:
-                        self.optimizer.zero_grad()
-                        loss.backward(retain_graph=True)
-                        if self.config["training"]["grad_norm_clip"] is not None:
-                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config["training"]["grad_norm_clip"])
-                        self.optimizer.step()
-                        if not self.use_cosine_decay:
-                            self.scheduler.step()  
+                        # For IQL, optimization is already done in the update method
+                        if self.config["model_mode"] != "IQL":
+                            self.optimizer.zero_grad()
+                            loss.backward(retain_graph=True)
+                            if self.config["training"]["grad_norm_clip"] is not None:
+                                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config["training"]["grad_norm_clip"])
+                            self.optimizer.step()
+                            if not self.use_cosine_decay:
+                                self.scheduler.step()  
                         
                         tokens += (y1 >= 0).sum().item() # TODO: change to the padding_idx?
                         
@@ -361,13 +453,19 @@ class Trainer(BaseTrainer):
 
                         self.log({"learning_rate": lr})
 
-                        self.pbar.set_description(f"[train] ep {epoch+1} it {it} tTotal {loss.item():.2f} lr {lr:e} tokens, M {(tokens/1e6):.2f}")
-                
+                self.pbar.set_description(f"[train] ep {epoch+1} it {it} tTotal {loss.item():.2f} lr {lr:e} tokens, M {(tokens/1e6):.2f}")
+                    
                 it_counter += 1 
             
             if it_counter >= self.config["training"]["warmup_steps"] and not self.warmup_changed_to_decay and not self.use_cosine_decay:
                 self.scheduler = self.lr_scheduler.make_decay_scheduler(self.optimizer)
                 self.warmup_changed_to_decay = True
+
+            # Calculate and log epoch time
+            epoch_time = time.time() - epoch_start_time
+            print(f"Epoch {epoch+1} completed in {epoch_time:.2f} seconds")
+            if self.wwandb:
+                self.log({"epoch_time": epoch_time})
             
             # * Mini-inference at checkpoint
             if self._should_checkpoint(epoch, tokens):
@@ -378,6 +476,18 @@ class Trainer(BaseTrainer):
                             corridor_length=self.config["online_inference"]["corridor_length"],
                             text=None, env=self.env
                         )
+
+                    # Run multiple timeouts evaluation after the final epoch
+                    if epoch == self.config["training"]["epochs"] - 1 and "multiple_timeouts" in self.config["online_inference"]:
+                        print("\n\033[1;92mRunning final evaluation with multiple timeouts...\033[0m")
+                        for timeout in self.config["online_inference"]["multiple_timeouts"]:
+                            print(f"\n\033[1;93mEvaluating with timeout: {timeout}\033[0m")
+                            self.perform_mini_inference(
+                                episode_timeout=timeout,
+                                corridor_length=timeout-2,
+                                text=f"timeout_{timeout}", env=self.env
+                            )
+
                     elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')):
                         if "mikasa_robo" in self.env_name:
                             # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
@@ -441,8 +551,6 @@ class Trainer(BaseTrainer):
         """Explicit cleanup method"""
         if hasattr(self, 'writer'):
             self.writer.close()
-        # if hasattr(self, 'env') and self.env is not None:
-        #     self.env.close()
             
     def __del__(self):
         self.close()

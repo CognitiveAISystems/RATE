@@ -82,13 +82,10 @@ class BaseTrainer:
         print(f"metrics: {metrics}")
         # Check for new best metric value only if best_metric_name is set
         if self.best_metric_name is not None and self.best_metric_name in metrics:
-            print('AAAAAAAAAAAAAA')
             current_value = metrics[self.best_metric_name]
             if current_value > self.best_metric_value:
-                print('BBBBBBBBBBBBBBBBBB')
                 self.best_metric_value = current_value
                 if hasattr(self, 'model'):  # Make sure model exists
-                    print('CCCCCCCCCCCCCCCCC')
                     self.save_checkpoint(is_best=True)
 
         # Log to WandB

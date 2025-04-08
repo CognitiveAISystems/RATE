@@ -2,8 +2,9 @@ import torch
 import numpy as np
 import popgym
 import gymnasium as gym
-from src.additional.gen_popgym_data.get_dataset_collectors_ckpt import env_names_dict
 
+from src.additional.gen_popgym_data.get_dataset_collectors_ckpt import env_names_dict
+from src.utils.additional_data_processors import coords_to_idx, idx_to_coords
 from src.utils.set_seed import set_seed
 
 
@@ -48,6 +49,7 @@ def get_returns_POPGym(model, ret, seed, episode_timeout, context_length, device
     target_return = torch.tensor(ret, device=device, dtype=torch.float32).reshape(1, 1)
     timesteps = torch.tensor(0, device=device, dtype=torch.long).reshape(1, 1)
     episode_return, episode_length = 0, 0
+    make_np_array = False
 
     mem_tokens = model.mem_tokens.repeat(1, 1, 1).detach() if model.mem_tokens is not None else None
     saved_context = None
@@ -88,15 +90,25 @@ def get_returns_POPGym(model, ret, seed, episode_timeout, context_length, device
         sampled_action, new_mem, new_notes, attn_map = sample_outputs
         
         action_probs = torch.softmax(sampled_action, dim=-1).squeeze().cpu().numpy()
-        if not use_argmax:
-            if isinstance(env.action_space, gym.spaces.Discrete):
-                act = np.random.choice(env.action_space.n, p=action_probs)
-            else:
-                act = action_probs * (env.action_space.high - env.action_space.low) + env.action_space.low
-        else:
-            act = action_probs.argmax()
         
-        actions[-1] = act
+        if isinstance(env.action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
+            if any(game in env_name for game in ['Battleship', 'MineSweeper']):
+                act = action_probs.argmax()
+                act = idx_to_coords(act, board_size=8 if 'Battleship' in env_name else 4)
+            else:
+                if not use_argmax:
+                    act = np.random.choice(env.action_space.n, p=action_probs)
+                else:
+                    act = action_probs.argmax()
+        else:
+            # NoisyPositionOnlyCartPoleMedium
+            act = sampled_action.item()
+            act = np.array([act])
+            # normalized_action = sampled_action.squeeze().cpu().numpy()
+            # act = normalized_action * (env.action_space.high - env.action_space.low) / 2 + \
+            #       (env.action_space.high + env.action_space.low) / 2
+        
+        actions[-1] = act if isinstance(act, (int, float)) else act[0]
         state, reward, truncated, terminated, _ = env.step(act)
         done = truncated or terminated
         state = torch.tensor(state, dtype=torch.float32, device=device).reshape(1, 1, -1)

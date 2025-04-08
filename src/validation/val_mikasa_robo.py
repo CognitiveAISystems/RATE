@@ -39,33 +39,35 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
     set_seed(seed)
     scale = 1
 
+    envs_num = 20
+
     # model = model.cpu()
     # device = torch.device('cpu')
     
     # Reset environment and get initial state
     state_0, _ = env.reset(seed=seed)
-    state_0 = state_0['rgb'] # 16x128x128x6
+    state_0 = state_0['rgb'] # envs_numx128x128x6
     
     # Convert state to expected format [C, H, W] and add batch/sequence dimensions
-    state = state_0.float().permute(0, 3, 1, 2).to(device)  # 16x6x128x128
-    state = state.unsqueeze(1)   # 16x1x6x128x128
+    state = state_0.float().permute(0, 3, 1, 2).to(device)  # envs_numx6x128x128
+    state = state.unsqueeze(1)   # envs_numx1x6x128x128
     
     # Initialize episode tracking
-    episode_return = torch.zeros((16), device=device, dtype=torch.float32)
+    episode_return = torch.zeros((envs_num), device=device, dtype=torch.float32)
     episode_length = 0
     done = False
     HISTORY_LEN = context_length
     
     # Initialize state/action tracking
     states = state.to(device=device, dtype=torch.float32)
-    actions = torch.zeros((16, 0, config['model']['act_dim']), device=device, dtype=torch.float32)
+    actions = torch.zeros((envs_num, 0, config['model']['act_dim']), device=device, dtype=torch.float32)
     
     # Initialize return targets and timesteps
-    target_return = torch.ones((16, 1), device=device, dtype=torch.float32) * ret
+    target_return = torch.ones((envs_num, 1), device=device, dtype=torch.float32) * ret
     timesteps = torch.tensor(0, device=device, dtype=torch.long).reshape(1, 1)
     
     # Initialize memory tracking
-    mem_tokens = (model.mem_tokens.repeat(1, 16, 1).detach() if model.mem_tokens is not None else None)
+    mem_tokens = (model.mem_tokens.repeat(1, envs_num, 1).detach() if model.mem_tokens is not None else None)
     saved_context = None
     segment = 0
     prompt_steps = 0
@@ -73,7 +75,7 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
     frames, rews, act_list, memories, eval_metrics = [env.render()], [], [], [], defaultdict(list)
     
     for t in range(episode_timeout):
-        actions = torch.cat([actions, torch.zeros((16, 1, config['model']['act_dim']), device=device)], dim=1)
+        actions = torch.cat([actions, torch.zeros((envs_num, 1, config['model']['act_dim']), device=device)], dim=1)
         
         # RATE / RMT / TrXL
         if config["model_mode"] not in ['DT', 'DTXL']:
@@ -129,6 +131,15 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
         mem_tokens_ = mem_tokens.shape if mem_tokens is not None else None
         saved_context_ = saved_context[0].shape if saved_context is not None else None
         # print(f"\n{states_norm.shape=} | {prt} | {target_return.shape=} | {timesteps.shape=} | {mem_tokens_} | {saved_context_}")
+
+        if config["model_mode"] in ["BC", "CQL", "IQL"]:
+            states_norm = states_norm[:, -1:, :, :, :]
+            act_to_pass = act_to_pass[:, -1:, :] if act_to_pass is not None else None
+            target_return = target_return[:, -1:]
+            timesteps = timesteps[:, -1:]
+            mem_tokens = None
+            saved_context = None
+
         sampled_action, new_mem, new_notes, attn_map = sample(
             model=model,
             x=states_norm,
@@ -146,7 +157,7 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
             memories.append(mem_tokens.detach().cpu().numpy())
 
         act = sampled_action#.detach().cpu().numpy()
-        act = act # 16x1x8
+        act = act # envs_numx1x8
         
         actions[:, -1, :] = act
         act_list.append(act)
@@ -164,7 +175,7 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
                 eval_metrics[k].append(v)
 
         state = state['rgb'].float().permute(0, 3, 1, 2).to(device)
-        state = state.unsqueeze(1)   # 16x1x6x128x128
+        state = state.unsqueeze(1)   # envs_numx1x6x128x128
         
         cur_state = state.to(device)
         states = torch.cat([states, cur_state], dim=1)

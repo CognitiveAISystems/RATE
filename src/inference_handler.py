@@ -7,17 +7,21 @@ import os
 from .base_trainer import BaseTrainer
 
 
-reds = [2, 3, 6, 8, 9, 10, 11, 14, 15, 16, 17, 18, 20, 21, 25, 26, 27, 28, 29, 31, 38, 40, 41, 42, 45,
-        46, 49, 50, 51, 52, 53, 54, 55, 58, 59, 60, 61, 63, 64, 67, 68, 70, 72, 73, 74, 77, 80, 82, 84, 
-        86, 88, 89, 90, 91, 92, 97, 98, 99, 100, 101, 103, 106, 108, 109, 113, 115, 116, 117, 120, 
-        123, 124, 125, 126, 127, 128, 129, 133, 134, 136, 139, 140, 142, 144, 145, 147, 148, 151, 152, 
-        153, 154, 156, 157, 158, 159, 161, 164, 165, 170, 171, 173]
+reds = [
+    2, 3, 6, 8, 9, 10, 11, 14, 15, 16, 17, 18, 20, 21, 25, 26, 27, 28, 29, 31, 38, 40, 41, 42, 45,
+    46, 49, 50, 51, 52, 53, 54, 55, 58, 59, 60, 61, 63, 64, 67, 68, 70, 72, 73, 74, 77, 80, 82, 84, 
+    86, 88, 89, 90, 91, 92, 97, 98, 99, 100, 101, 103, 106, 108, 109, 113, 115, 116, 117, 120, 123, 
+    124, 125, 126, 127, 128, 129, 133, 134, 136, 139, 140, 142, 144, 145, 147, 148, 151, 152, 153, 
+    154, 156, 157, 158, 159, 161, 164, 165, 170, 171, 173
+]
 
-greens = [0, 1, 4, 5, 7, 12, 13, 19, 22, 23, 24, 30, 32, 33, 34, 35, 36, 37, 39, 43, 44, 47, 48, 56, 57,
-          62, 65, 66, 69, 71, 75, 76, 78, 79, 81, 83, 85, 87, 93, 94, 95, 96, 102, 104, 105, 107, 110, 111, 
-          112, 114, 118, 119, 121, 122, 130, 131, 132, 135, 137, 138, 141, 143, 146, 149, 150, 155, 160, 162, 
-          163, 166, 167, 168, 169, 172, 175, 176, 177, 182, 183, 187, 190, 192, 193, 195, 199, 204, 206, 208, 
-          209, 210, 212, 215, 216, 218, 219, 220, 221, 223, 224, 225]
+greens = [
+    0, 1, 4, 5, 7, 12, 13, 19, 22, 23, 24, 30, 32, 33, 34, 35, 36, 37, 39, 43, 44, 47, 48, 56, 57,
+    62, 65, 66, 69, 71, 75, 76, 78, 79, 81, 83, 85, 87, 93, 94, 95, 96, 102, 104, 105, 107, 110, 111, 
+    112, 114, 118, 119, 121, 122, 130, 131, 132, 135, 137, 138, 141, 143, 146, 149, 150, 155, 160, 162, 
+    163, 166, 167, 168, 169, 172, 175, 176, 177, 182, 183, 187, 190, 192, 193, 195, 199, 204, 206, 208, 
+    209, 210, 212, 215, 216, 218, 219, 220, 221, 223, 224, 225
+]
 
 
 class InferenceHandler(BaseTrainer):
@@ -72,6 +76,7 @@ class InferenceHandler(BaseTrainer):
                         f"Success_rate_S_{text}": suc_rate,
                         f"Mean_D[time]_S_{text}": ep_time
                     })
+            print(f"[T: {episode_timeout}] | Success rate: {suc_rate}, Mean time: {ep_time}")
 
     @staticmethod
     def perform_mini_inference_vizdoom(self, episode_timeout, text=None, env=None):
@@ -235,7 +240,7 @@ class InferenceHandler(BaseTrainer):
 
         self.model.eval()
         with torch.no_grad():
-            SKIP_RETURN = 20
+            SKIP_RETURN = 1
             seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
             total_rew_mm = 0
             cnt = 1
@@ -272,6 +277,7 @@ class InferenceHandler(BaseTrainer):
                         f"ReturnsMean_{ret}": returns_mean})
 
         self.model.to(self.device)
+
     @staticmethod
     def perform_mini_inference_mikasarobo(self, episode_timeout, text=None, env=None):
         from src.validation.val_mikasa_robo import get_returns_MIKASARobo
@@ -295,7 +301,6 @@ class InferenceHandler(BaseTrainer):
                     "reward": [],
                     "success_at_end": []
                 }
-
 
                 # In ManiSkill we can process parallel episodes, and therfore
                 # we can proceess all eval epiisodes at once
