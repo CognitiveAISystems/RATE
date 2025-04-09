@@ -274,66 +274,142 @@ class MemTransformerLM(nn.Module):
 
         return B, B1, states, reshape_required
     
-    def forward(self, states, actions, rtgs, target, timesteps, *mems, mem_tokens=None, masks=None):
+    def forward(self, states, actions=None, returns_to_go=None, timesteps=None,
+               attention_mask=None, state_padding_mask=None, action_padding_mask=None,
+               return_hidden=False, return_attention_weights=False, mems=None, **kwargs):
+        """
+        Forward pass of the Trajectory Transformer model.
         
-        if not mems: mems = self.init_mems(states.device)
-        B, B1, states, reshape_required = self.reshape_states(states)
+        Args:
+            states: (B, T, state_dim) tensor of state representations
+            actions: (B, T, act_dim) tensor of action representations (optional for inference)
+            returns_to_go: (B, T, 1) tensor of returns-to-go (optional for inference)
+            timesteps: (B, T) tensor of timesteps (optional, defaults to range(T))
+            attention_mask: Attention mask for the transformer (optional)
+            state_padding_mask: Padding mask for states (optional)
+            action_padding_mask: Padding mask for actions (optional)
+            return_hidden: Whether to return hidden states (default: False)
+            return_attention_weights: Whether to return attention weights (default: False)
+            mems: Memory for TransformerXL compatibility (not used)
+            
+        Returns:
+            action_preds: (B, T, act_dim) tensor of predicted actions
+            outputs: Additional outputs (hidden_states, attentions) if requested
+        """
+        batch_size, seq_length = states.shape[0], states.shape[1]
+        
+        if timesteps is None:
+            timesteps = torch.arange(seq_length, device=states.device).repeat(batch_size, 1)
+        
+        # Get embeddings for states, actions, returns, and timesteps
         state_embeddings = self.state_encoder(states)
-        if reshape_required:
-            state_embeddings = state_embeddings.reshape(B, B1, self.d_embed)
-        rtg_embeddings = self.ret_emb(rtgs)
-
+        
         if actions is not None:
+            # Получаем вложения действий
             action_embeddings = self.encode_actions(actions)
-            token_embeddings = torch.zeros((B, B1*3 - int(target is None), self.d_embed), dtype=torch.float32, device=state_embeddings.device)
-            token_embeddings[:, ::3, :] = rtg_embeddings
-            token_embeddings[:, 1::3, :] = state_embeddings
-            token_embeddings[:, 2::3, :] = action_embeddings[:,-B1 + int(target is None):,:]
+            
+            # Проверяем размерности и исправляем при необходимости
+            action_seq_length = action_embeddings.shape[1]
+            state_seq_length = state_embeddings.shape[1]
+            rtg_seq_length = returns_to_go.shape[1] if returns_to_go is not None else state_seq_length
+            
+            # Если размеры не совпадают, приводим их к единому размеру (к наименьшему)
+            min_length = min(action_seq_length, state_seq_length, rtg_seq_length)
+            
+            if state_seq_length > min_length:
+                state_embeddings = state_embeddings[:, :min_length, :]
+            
+            if action_seq_length > min_length:
+                action_embeddings = action_embeddings[:, :min_length, :]
+            
+            if returns_to_go is not None and rtg_seq_length > min_length:
+                returns_to_go = returns_to_go[:, :min_length, :]
         else:
-            token_embeddings = torch.zeros((B, B1*2, self.d_embed), dtype=torch.float32, device=state_embeddings.device)
-            token_embeddings[:,::2,:] = rtg_embeddings
-            token_embeddings[:,1::2,:] = state_embeddings
-
-        hidden, new_mems = self._forward(token_embeddings, mems=mems, mem_tokens=mem_tokens) #hidden.shape = (total_len, bs, emb_dim) new_mems[i].shape = (MEM_LEN, bs, d_model)
-        hidden = hidden.permute(1,0,2)
-        num_mem = self.num_mem_tokens
-        
-        if self.num_mem_tokens > 0:
-            if self.mem_at_end:
-                tgt_len = token_embeddings.shape[1]
-                mem_tokens_write = hidden[:, -num_mem:, :]
-            else:
-                tgt_len = token_embeddings.shape[1]
-                mem_tokens_write = hidden[:, -tgt_len-num_mem:-tgt_len, :]
-
-            if self.n_head_ca != 0:
-                if self.mrv_act is not None:
-                    new_mem_tokens = self.mrv_act(hidden[:, -num_mem:, :])
-                else:
-                    new_mem_tokens = hidden[:, -num_mem:, :]
-
-                mem_tokens = mem_tokens.permute(1,0,2)
-                mask_mem_mem = torch.ones((new_mem_tokens.shape[1], new_mem_tokens.shape[1]), dtype=torch.bool).to(new_mem_tokens.device)
-                mem_tokens_write, _ = self.mha_mem_to_mem(mem_tokens, new_mem_tokens, new_mem_tokens, attn_mask=mask_mem_mem)
-
-        if self.mem_at_end:
-            logits = self.head(hidden)[:, num_mem:-num_mem]
+            # For inference, we'll use zeros and overwrite later
+            action_embeddings = torch.zeros(
+                (batch_size, seq_length, self.d_model), 
+                device=states.device
+            )
+            
+        if returns_to_go is not None:
+            returns_embeddings = self.ret_emb(returns_to_go)
+            
+            # Дополнительная проверка на равенство размеров
+            if returns_embeddings.shape[1] != state_embeddings.shape[1]:
+                min_len = min(returns_embeddings.shape[1], state_embeddings.shape[1])
+                returns_embeddings = returns_embeddings[:, :min_len, :]
+                state_embeddings = state_embeddings[:, :min_len, :]
+                if action_embeddings.shape[1] > min_len:
+                    action_embeddings = action_embeddings[:, :min_len, :]
         else:
-            tgt_len = token_embeddings.shape[1] # total_len
-            logits = self.head(hidden)[:, -tgt_len:] # was tgt_len # logits: torch.Size([64, 301, 4])
+            # For inference without returns
+            returns_embeddings = torch.zeros(
+                (batch_size, state_embeddings.shape[1], self.d_model),
+                device=states.device
+            )
+
+        # Проверяем, что все тензоры имеют одинаковую длину последовательности
+        assert returns_embeddings.shape[1] == state_embeddings.shape[1] == action_embeddings.shape[1], \
+            f"Sequence length mismatch: returns={returns_embeddings.shape[1]}, states={state_embeddings.shape[1]}, actions={action_embeddings.shape[1]}"
         
         if actions is not None:
-            logits = logits[:, 1::3, :]
+            # Form sequences: [r_0, s_0, a_0, r_1, s_1, a_1, ...]
+            sequence = torch.stack(
+                [returns_embeddings, state_embeddings, action_embeddings],
+                dim=2
+            ).reshape(batch_size, 3 * returns_embeddings.shape[1], self.d_model)
         else:
-            logits = logits[:, 1:, :]    
+            # Form sequences without actions: [r_0, s_0, r_1, s_1, ...]
+            sequence = torch.stack(
+                [returns_embeddings, state_embeddings],
+                dim=2
+            ).reshape(batch_size, 2 * returns_embeddings.shape[1], self.d_model)
         
-        output = {
-            'logits': logits,
-            'new_mems': new_mems if new_mems is not None else None,
-            'mem_tokens': mem_tokens_write.permute(1, 0, 2) if self.num_mem_tokens != 0 else None
-        }
+        # Add position embeddings and apply layer norm
+        seq_len = sequence.shape[1]
+        if seq_len <= 1024:
+            # Using pre-computed position embeddings
+            position_embeddings = self.pos_emb[:, :seq_len, :]
+            sequence = sequence + position_embeddings
         
-        return output
+        sequence = self.embed_ln(sequence)
+        sequence = self.drop(sequence)
+        
+        # Apply transformer blocks
+        hidden_states = self._forward(sequence, mems=mems)[0]
+        
+        # Get action predictions 
+        if actions is not None:
+            # Индексы позиций действий: 2, 5, 8, ...
+            action_preds = hidden_states[:, 2::3, :]
+        else:
+            # Индексы позиций состояний: 1, 3, 5, ...
+            action_preds = hidden_states[:, 1::2, :]
+        
+        action_preds = self.head(action_preds)
+        
+        # Сохраняем карту внимания для визуализации
+        attn_maps = []
+        for layer in self.layers:
+            if hasattr(layer.attn, '_attn_map'):
+                attn_maps.append(layer.attn._attn_map)
+        
+        if len(attn_maps) > 0:
+            self.attn_map = attn_maps[0]  # Берем карту внимания из первого блока для совместимости с RATE
+        
+        # Используем только ключ 'logits' для совместимости с trainer
+        outputs = {'logits': action_preds}
+        
+        if return_hidden:
+            outputs['hidden_states'] = hidden_states
+        
+        if return_attention_weights:
+            outputs['attentions'] = attn_maps
+        
+        # For interface compatibility with RATE
+        outputs['mems'] = None
+        
+        return outputs
 
 ######################################################################################    
 

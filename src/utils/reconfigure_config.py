@@ -96,6 +96,15 @@ def configure_model_architecture(config: dict) -> tuple[int, int]:
         config["training"]["context_length"] = config["training"]["context_length"] * config["training"]["sections"]
         config["training"]["sections"] = 1
         max_length = config["training"]["context_length"]
+
+    elif config['model_mode'] == 'TT':  # TrajectoryTransformer
+        config["model"]["mem_len"] = 0
+        config["model"]["mem_at_end"] = False
+        config["model"]["num_mem_tokens"] = 0
+        config["model"]["n_head_ca"] = 0
+        config["training"]["context_length"] = config["training"]["context_length"] * config["training"]["sections"]
+        config["training"]["sections"] = 1
+        max_length = config["training"]["context_length"]
     
     if config['model']['num_mem_tokens'] == 0:
         config["model"]["mem_at_end"] = False

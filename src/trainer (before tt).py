@@ -92,35 +92,6 @@ class Trainer(BaseTrainer):
             self.model = ConservativeQLearning(**self.config["model"])
         elif self.config["model_mode"] == "IQL":
             self.model = ImplicitQLearning(**self.config["model"])
-        elif self.config["model_mode"] == 'TT':
-            from RATE.TrajectoryTransformer import TrajectoryTransformer
-            self.model = TrajectoryTransformer(
-                state_dim=self.config['model']['state_dim'],
-                act_dim=self.config['model']['act_dim'],
-                n_layer=self.config['model']['n_layer'],
-                n_head=self.config['model']['n_head'],
-                n_head_ca=self.config['model']['n_head_ca'],
-                d_model=self.config['model']['d_model'],
-                d_head=self.config['model']['d_head'],
-                d_inner=self.config['model']['d_inner'],
-                dropout=self.config['model']['dropout'],
-                dropatt=self.config['model']['dropatt'],
-                mem_len=self.config['model']['mem_len'],
-                ext_len=self.config['model']['ext_len'],
-                num_mem_tokens=self.config['model']['num_mem_tokens'],
-                mem_at_end=self.config['model']['mem_at_end'],
-                mrv_act=self.config['model']['mrv_act'],
-                skip_dec_ffn=self.config['model']['skip_dec_ffn'],
-                padding_idx=self.config['model']['padding_idx'],
-                max_ep_len=1000,  # You may want to make this configurable
-                env_name=self.config['model']['env_name']
-            )
-            # Добавляем атрибут attn_map для совместимости с RATE
-            if not hasattr(self.model, 'attn_map'):
-                self.model.attn_map = None
-            # Добавляем другие атрибуты для совместимости с RATE
-            if not hasattr(self.model, 'is_first_segment'):
-                self.model.is_first_segment = True
         else:
             raise ValueError(f"Invalid model type: {self.config['model_mode']}")
 
@@ -399,42 +370,16 @@ class Trainer(BaseTrainer):
                     
                     if mem_tokens is not None:
                         mem_tokens = mem_tokens.detach()
-                    elif hasattr(self.raw_model, 'mem_tokens') and self.raw_model.mem_tokens is not None:
+                    elif self.raw_model.mem_tokens is not None:
                         mem_tokens = self.raw_model.mem_tokens.repeat(1, r1.shape[0], 1)
 
                     with torch.set_grad_enabled(is_train):
                         res = self.model(x1, y1, r1, y1, t1, *memory, mem_tokens=mem_tokens, masks=masks1) if memory is not None \
                             else self.model(x1, y1, r1, y1, t1, mem_tokens=mem_tokens, masks=masks1)
                         
-                        # Обработка результатов в зависимости от формата вывода модели
-                        if isinstance(res, dict):
-                            # TrajectoryTransformer возвращает словарь
-                            logits = res.get('logits')
-                            if logits is None:
-                                raise ValueError(f"Model returned a dictionary without 'logits' key: {res.keys()}")
-                            memory = res.get('mems', None)
-                            mem_tokens = res.get('mem_tokens', None)
-                        else:
-                            # RATE_model и другие модели возвращают кортеж
-                            try:
-                                # Предполагается, что res - это кортеж
-                                if len(res) > 0:
-                                    logits = res[0]
-                                if len(res) > 1:    
-                                    memory = res[1]
-                                if len(res) > 2:
-                                    mem_tokens = res[2]
-                            except (TypeError, IndexError) as e:
-                                print(f"Warning: Error processing model output: {e}. Trying as dictionary.")
-                                # Если не получается обработать как кортеж, пробуем как словарь
-                                if hasattr(res, 'get'):  # Проверяем, есть ли метод get (словарь)
-                                    logits = res.get('logits')
-                                    memory = res.get('mems', None)
-                                    mem_tokens = res.get('mem_tokens', None)
-                                else:
-                                    # Если и это не сработало, выводим информацию о типе объекта
-                                    print(f"Cannot process result of type {type(res)}: {res}")
-                                    raise
+                        logits = res['logits']
+                        memory = res.get('new_mems', None)
+                        mem_tokens = res.get('mem_tokens', None)
 
                         # For IQL, we need to handle the case differently
                         if self.config["model_mode"] == "IQL":

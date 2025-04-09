@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# * T-Maze with Trajectory Transformer
+python3 src/train.py \
+    --wandb.project-name='RATE-T-Maze' \
+    --wandb.wwandb=True \
+    --data.gamma=1.0 \
+    --data.path-to-dataset=None \
+    --training.learning-rate=0.0003 \
+    --training.lr-end-factor=0.1 \
+    --training.beta-1=0.9 \
+    --training.beta-2=0.95 \
+    --training.weight-decay=0.1 \
+    --training.batch-size=64 \
+    --training.warmup-steps=100 \
+    --training.final-tokens=10_000_000 \
+    --training.grad-norm-clip=1.0 \
+    --training.epochs=300 \
+    --training.ckpt-epoch=25 \
+    --training.online-inference=True \
+    --training.log-last-segment-loss-only=True \
+    --training.use-cosine-decay=False \
+    --training.context-length=30 \
+    --training.sections=3 \
+    --model.env-name='tmaze' \
+    --model.state-dim=4 \
+    --model.act-dim=4 \
+    --model.n-layer=8 \
+    --model.n-head=8 \
+    --model.n-head-ca=0 \
+    --model.d-model=64 \
+    --model.d-head=64 \
+    --model.d-inner=64 \
+    --model.dropout=0.05 \
+    --model.dropatt=0.0 \
+    --model.mem-len=0 \
+    --model.ext-len=0 \
+    --model.num-mem-tokens=0 \
+    --model.mem-at-end=False \
+    --model.mrv-act='no_act' \
+    --model.skip-dec-ffn=False \
+    --model.padding-idx=-10 \
+    --tensorboard-dir='runs/TMaze-TT' \
+    --model-mode='TT' \
+    --arch-mode='TrXL' \
+    --start-seed=1 \
+    --end-seed=1 \
+    --text='TrajectoryTransformer' \
+    --min-n-final=1 \
+    --max-n-final=3

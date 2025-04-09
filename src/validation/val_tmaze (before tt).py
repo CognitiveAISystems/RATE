@@ -10,15 +10,6 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
         x_cond = x if x.size(1) <= block_size else x[:, -block_size:] # crop context if needed
         if actions is not None:
             actions = actions if actions.size(1) <= block_size else actions[:, -block_size:] # crop context if needed
-            
-            # Проверяем размерности для TrajectoryTransformer
-            if actions.shape[1] < x_cond.shape[1]:
-                # Если действий меньше, чем состояний, дополняем нулями
-                pad_size = x_cond.shape[1] - actions.shape[1]
-                zero_pad = torch.zeros((actions.shape[0], pad_size, actions.shape[2]), 
-                                      device=actions.device, dtype=actions.dtype)
-                actions = torch.cat([actions, zero_pad], dim=1)
-        
         rtgs = rtgs if rtgs.size(1) <= block_size else rtgs[:, -block_size:] # crop context if needed
         
         if saved_context is not None:
@@ -29,23 +20,9 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
         # Handle both MemTransformerLM and TrajectoryTransformer outputs
         if isinstance(results, dict):
             # TrajectoryTransformer returns a dictionary
-            logits = results.get('logits')
-            if logits is None:
-                raise ValueError(f"Model returned a dictionary without 'logits' key: {results.keys()}")
-            
-            # Обработка последнего предсказания (take last prediction)
-            if len(logits.shape) == 3:
-                logits = logits[:, -1, :]
-            
-            # Для TT модели 'mems' может быть None, используем пустой список как fallback
-            memory = results.get('mems')
-            # Для совместимости с RATE, который ожидает непустой memory
-            if memory is None:
-                memory = [torch.empty(0, dtype=torch.float, device=x_cond.device)] * (model.n_layer + 1 if hasattr(model, 'n_layer') else 1)
-            
+            logits = results['logits'][:,-1,:]
+            memory = results['mems']
             mem_tokens = results.get('mem_tokens', None)
-            
-            # Получение карты внимания для визуализации
             attn_map = getattr(model, 'attn_map', None)
             if attn_map is None and hasattr(model, 'blocks') and len(model.blocks) > 0:
                 # Try to get attention map from the first block's attention
@@ -90,16 +67,7 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     rews = []
     attentions = []
     states = state.to(device=device, dtype=torch.float32)
-    
-    # Для TrajectoryTransformer, создаем начальные действия с той же формой, что и states
-    is_trajectory_transformer = config["model_mode"] == 'TT'
-    if is_trajectory_transformer:
-        # Создаем действия сразу с правильным размером для совместимости
-        actions = torch.zeros((1, 1), device=device, dtype=torch.float32)
-    else:
-        # Для других моделей, начинаем с пустого тензора
-        actions = torch.zeros((0, 1), device=device, dtype=torch.float32)
-    
+    actions = torch.zeros((0, 1), device=device, dtype=torch.float32)
     rewards = torch.zeros(0, device=device, dtype=torch.float32)
     target_return = torch.tensor(ret, device=device, dtype=torch.float32).reshape(1, 1)
     sim_states = []
@@ -120,27 +88,12 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
     switcher = False
     saved_mem = None
     
-    # Проверка типа модели для различной обработки контекста
-    is_trajectory_transformer = config["model_mode"] == 'TT'
-    
     for t in range(max_ep_len):
-        if not is_trajectory_transformer:
-            # Для классической модели RATE
-            actions = torch.cat([actions, torch.zeros((1, 1), device=device)], dim=0)
-        else:
-            # Для TrajectoryTransformer, обновляем последнее действие или добавляем новое
-            if t > 0:
-                if actions.shape[0] < states.shape[1]:
-                    # Добавляем новое действие
-                    actions = torch.cat([actions, torch.zeros((1, 1), device=device)], dim=0)
-                else:
-                    # Обновляем последнее действие
-                    actions[-1, :] = 0
-                    
+        actions = torch.cat([actions, torch.zeros((1, 1), device=device)], dim=0)
         rewards = torch.cat([rewards, torch.zeros(1, device=device)])
         
         act_new_segment = False
-        if config["model_mode"] not in ['DT', 'DTXL', 'TT']:  # Добавляем 'TT' в список исключений
+        if config["model_mode"] not in ['DT', 'DTXL']:
             if actions.shape[0] > HISTORY_LEN:
                 segment+=1
                 
@@ -166,7 +119,7 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
                     states = states[:, 1:, :]
                     target_return = target_return[:,1:]
                     
-                if t%(context_length)==0 and not is_trajectory_transformer:  # Пропускаем это для TT
+                if t%(context_length)==0:
                     if create_video:
                         out = torch.norm(mem_tokens).item() if mem_tokens is not None else None
                         print(f't: {t}, NEW MEMORY: {out}')
@@ -174,20 +127,11 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
                     saved_context = new_notes
                 
         if t==0:
-            if is_trajectory_transformer:
-                # Для TrajectoryTransformer обеспечиваем совпадение размеров
-                act_to_pass = actions.reshape(1, 1, 1)
-            else:
-                act_to_pass = None
+            act_to_pass = None
         else:
-            if is_trajectory_transformer:
-                # Для TT модели передаем все действия
-                act_to_pass = actions.reshape(1, actions.shape[0], 1)
-            else:
-                # Для RATE передаем действия в обычном формате
-                act_to_pass = actions.unsqueeze(0)[:, 1:, :]
-                if act_to_pass.shape[1] == 0:
-                    act_to_pass = None 
+            act_to_pass = actions.unsqueeze(0)[:, 1:, :]
+            if act_to_pass.shape[1] == 0:
+                act_to_pass = None 
         
         sampled_action, new_mem, new_notes, attn_map = sample(model=model,  
                                                         x=states[:, :, 1:],
@@ -201,23 +145,13 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
         
         if t > 0 and t % (context_length-1) == 0 and switcher == False:
             switcher = True
-            # Для TrajectoryTransformer не сохраняем контекст
-            if not is_trajectory_transformer:
-                saved_mem = new_mem
+            saved_mem = new_mem
 
         
         act = torch.argmax(torch.softmax(sampled_action, dim=-1).squeeze()).item()
         if create_video:
             print(t, "act", act, np.round(torch.softmax(sampled_action, dim=-1).squeeze().detach().cpu().numpy(), 3), "\tstate:", int(where_i), states[:, -1:, :].detach().cpu().numpy())
-        
-        # Обновляем действия
-        if is_trajectory_transformer:
-            # Для TrajectoryTransformer обновляем последнее действие
-            actions[-1, :] = act
-        else:
-            # Для RATE в стандартном формате
-            actions[-1, :] = act
-            
+        actions[-1, :] = act
         act_list.append(act)
         state, reward, done, info = env.step(act)
 
@@ -248,16 +182,7 @@ def get_returns_TMaze(model, ret, seed, episode_timeout, corridor_length, contex
         states = torch.cat([states, cur_state], dim=1)
         rewards[-1] = reward
         pred_return = target_return[0,-1] - (reward/scale)
-        
-        # Обновляем target_return
-        if is_trajectory_transformer:
-            # Для TrajectoryTransformer, убедимся, что форма соответствует
-            if target_return.shape[1] < states.shape[1]:
-                target_return = torch.cat([target_return, pred_return.reshape(1, 1)], dim=1)
-        else:
-            # Стандартное обновление для RATE
-            target_return = torch.cat([target_return, pred_return.reshape(1, 1)], dim=1)
-            
+        target_return = torch.cat([target_return, pred_return.reshape(1, 1)], dim=1)
         episode_return += reward
         episode_length += 1
         
