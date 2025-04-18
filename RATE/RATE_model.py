@@ -14,7 +14,7 @@ from RATE.env_encoders import ObsEncoder, ActEncoder, RTGEncoder, ActDecoder
 
 class MemTransformerLM(nn.Module):
     def __init__(
-            self, 
+        self, 
         state_dim, 
         act_dim,
         n_layer, 
