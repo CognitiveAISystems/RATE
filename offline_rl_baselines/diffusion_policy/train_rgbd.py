@@ -427,7 +427,7 @@ def run_inference(env, agent, num_episodes=2, device='cuda', max_episode_steps=9
             done_envs = done.nonzero().squeeze(-1)
             completed_returns.extend(episode_return[done_envs].tolist())
             completed_lengths.extend(episode_length[done_envs].tolist())
-            # Сбросить только для новых эпизодов
+
             episode_return[done_envs] = 0
             episode_length[done_envs] = 0
             # Reset environment for done episodes
@@ -566,7 +566,7 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    best_eval_return = float('-inf')  # ДО цикла обучения
+    best_eval_return = float('-inf')
     best_eval_metrics = defaultdict(float)
     timings = defaultdict(float)
 

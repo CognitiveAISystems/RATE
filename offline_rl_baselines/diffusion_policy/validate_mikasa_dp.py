@@ -59,7 +59,6 @@ class ValidateArgs:
 
 
 def evaluate_mikasa(n: int, agent, eval_envs, device, sim_backend: str, args, progress_bar: bool = True):
-    """Адаптированная функция evaluate для MIKASA-Robo"""
     agent.eval()
     if progress_bar:
         pbar = tqdm(total=n)
