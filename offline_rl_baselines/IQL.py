@@ -13,20 +13,21 @@ def update_exponential_moving_average(target, source, alpha):
         target_param.data.mul_(1. - alpha).add_(source_param.data, alpha=alpha)
 
 class ImplicitQLearning(nn.Module):
-    def __init__(self, 
-                 state_dim, 
-                 act_dim,
-                 d_model=128, 
-                 hidden_layers=[128, 128],
-                 dropout=0.1,
-                 env_name='mujoco',
-                 padding_idx=None,
-                 tau=0.7,
-                 beta=1.0,
-                 discount=0.99,
-                 alpha=0.01,
-                 **kwargs
-                 ):
+    def __init__(
+            self, 
+            state_dim, 
+            act_dim,
+            d_model=128, 
+            hidden_layers=[128, 128],
+            dropout=0.1,
+            env_name='mujoco',
+            padding_idx=None,
+            tau=0.7,
+            beta=1.0,
+            discount=0.99,
+            alpha=0.01,
+            **kwargs
+        ):
         
         super(ImplicitQLearning, self).__init__()
 

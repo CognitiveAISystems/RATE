@@ -16,10 +16,9 @@
     </a>
 </div>
 
-> [!important]
-> ⚠️ **Repository Status: Major Refactoring in Progress**  
-> The code for Atari and MuJoCo is in the process of being refactored and is available in the previous version in the [`rate-old` branch](https://github.com/CognitiveAISystems/RATE/tree/rate-old).
+## Overview
 
+RATE (Recurrent Action Transformer with Memory) is a novel offline RL agent designed specifically for solving memory-intensive tasks. The model combines transformer architecture with memory mechanisms to effectively handle long-term dependencies in sequential decision-making tasks.
 
 ## Implementation Status
 
@@ -35,7 +34,6 @@
 | ✅ | Minigrid-Memory |
 | ✅ | Memory-Maze |
 | ✅ | POPGym |
-| ✅ | [MIKASA-Robo](https://github.com/CognitiveAISystems/MIKASA-Robo) |
 | 🔄 | Action-Associative-Retrieval |
 | 🔄 | Atari |
 | 🔄 | MuJoCo |
@@ -50,11 +48,13 @@
 | ✅ | DT |
 | ✅ | RMT |
 | ✅ | TrXL |
-| ✅ | BC |
-| ✅ | CQL |
+| ✅ | BC (MLP / LSTM) |
+| ✅ | CQL (MLP / LSTM) |
 | ✅ | IQL |
-| 🔄 | Diffusion Policy |
-| 🔄 | Trajectory Transformer |
+| ✅ | [DLSTM](https://github.com/max7born/decision-lstm) / DGRU |
+| ✅ | [DMamba](https://github.com/Toshihiro-Ota/decision-mamba) |
+| ✅ | [LSDT](https://github.com/WangJinCheng1998/LONG-SHORT-DECISION-TRANSFORMER) |
+| ✅ | Diffusion Policy |
 
 </td>
 </tr>
@@ -75,62 +75,45 @@ pip install -r requirements/requirements_minigrid_memory.txt
 # Install additional dependencies for Memory-Maze
 pip install -r requirements/requirements_memory_maze.txt
 
-# Install additional dependencies for PopGym [TBD]
+# Install additional dependencies for POPGym
 pip install -r requirements/requirements_popgym.txt
-
-# Install additional dependencies for MIKASA-Robo
-pip install mikasa_robo_suite
 ```
 
-## Run experiments
+## Memory-intensive tasks
 
-### Running commands
+### T-Maze
+Configuration file: [run_experiments/TMaze.sh](run_experiments/TMaze.sh)
+- Environment: Simple memory task with T-shaped maze
+- Supported baselines: RATE, DT, RMT, TrXL, LSDT, BC-MLP, BC-LSTM, CQL-MLP, CQL-LSTM, DLSTM, DGRU, DMamba
 
-```bash
-# T-Maze
-bash run_experiments/TMaze/run_rate_tmaze.sh
-bash run_experiments/TMaze/run_dt_tmaze.sh
-bash run_experiments/TMaze/run_rmt_tmaze.sh
-bash run_experiments/TMaze/run_trxl_tmaze.sh
+### ViZDoom-Two-Colors
+Configuration file: [run_experiments/ViZDoom_Two_colors.sh](run_experiments/ViZDoom_Two_colors.sh)
+- Environment: First-person shooter with color-based memory task
+- Supported baselines: RATE, DT, RMT, TrXL, LSDT, BC-MLP, BC-LSTM, CQL-MLP, CQL-LSTM, DLSTM, DGRU, DMamba
 
-# ViZDoom-Two-Colors
-bash run_experiments/ViZDoom_Two_Colors/run_rate_vizdoom_two_colors.sh
-bash run_experiments/ViZDoom_Two_Colors/run_dt_vizdoom_two_colors.sh
-bash run_experiments/ViZDoom_Two_Colors/run_rmt_vizdoom_two_colors.sh
-bash run_experiments/ViZDoom_Two_Colors/run_trxl_vizdoom_two_colors.sh
+### Minigrid-Memory
+Configuration file: [run_experiments/Minigrid_Memory.sh](run_experiments/Minigrid_Memory.sh)
+- Environment: Grid-based memory task
+- Supported baselines: RATE, DT, RMT, TrXL, LSDT, BC-MLP, BC-LSTM, CQL-MLP, CQL-LSTM, DLSTM, DGRU, DMamba
 
-# Minigrid-Memory
-bash run_experiments/Minigrid_Memory/run_rate_minigrid_memory.sh
-bash run_experiments/Minigrid_Memory/run_dt_minigrid_memory.sh
-bash run_experiments/Minigrid_Memory/run_rmt_minigrid_memory.sh
-bash run_experiments/Minigrid_Memory/run_trxl_minigrid_memory.sh
+### Memory-Maze
+Configuration file: [run_experiments/Memory_Maze.sh](run_experiments/Memory_Maze.sh)
+- Environment: Complex maze navigation with memory requirements
+- Supported baselines: RATE, DT, RMT, TrXL
 
-# Memory-Maze
-bash run_experiments/Memory_Maze/run_rate_memory_maze.sh
-bash run_experiments/Memory_Maze/run_dt_memory_maze.sh
-bash run_experiments/Memory_Maze/run_rmt_memory_maze.sh
-bash run_experiments/Memory_Maze/run_trxl_memory_maze.sh
+### POPGym
+Configuration file: [run_experiments/POPGym.sh](run_experiments/POPGym.sh)
+- Environment: Suite of 48 partially observable environments
+- Supported baselines: RATE, DT, BC-MLP, BC-LSTM
+- Available tasks: See [POPGym documentation](https://github.com/proroklab/popgym) for details, and the table below for mapping indices to the task name
 
-# POPGym
-# [index] value in [0, 47]
-bash run_experiments/POPGym/DT/[index].sh
-bash run_experiments/POPGym/RATE/[index].sh
-
-# MIKASA-Robo
-# [index] value in [0, 31]
-bash run_experiments/MIKASA_Robo/RATE/K_Tdiv3/[index].sh
-bash run_experiments/MIKASA_Robo/DT/K_Tdiv3/[index].sh
-bash run_experiments/MIKASA_Robo/BC_MLP/[index].sh
-bash run_experiments/MIKASA_Robo/CQL_MLP/[index].sh
-bash run_experiments/MIKASA_Robo/IQL_MLP/[index].sh
-
-```
+For each environment:
+1. Open the corresponding configuration file
+2. Select the desired baseline model
+3. Adjust hyperparameters if needed
+4. Run the training script
 
 ### POPGym and MIKASA-Robo dataset descriptions
-
-<table>
-<tr>
-<td valign="top">
 
 | Index | Environment |
 |-------|-------------|
@@ -183,48 +166,6 @@ bash run_experiments/MIKASA_Robo/IQL_MLP/[index].sh
 | 46 | popgym-VelocityOnlyCartpoleHard-v0 |
 | 47 | popgym-VelocityOnlyCartpoleMedium-v0 |
 
-</td>
-<td valign="top">
-
-| Index | Environment |
-|-------|-------------|
-| 0 | ShellGameTouch-v0 |
-| 1 | ShellGamePush-v0 |
-| 2 | ShellGamePick-v0 |
-| 3 | InterceptSlow-v0 |
-| 4 | InterceptMedium-v0 |
-| 5 | InterceptFast-v0 |
-| 6 | InterceptGrabSlow-v0 |
-| 7 | InterceptGrabMedium-v0 |
-| 8 | InterceptGrabFast-v0 |
-| 9 | RotateLenientPos-v0 |
-| 10 | RotateLenientPosNeg-v0 |
-| 11 | RotateStrictPos-v0 |
-| 12 | RotateStrictPosNeg-v0 |
-| 13 | TakeItBack-v0 |
-| 14 | RememberColor3-v0 |
-| 15 | RememberColor5-v0 |
-| 16 | RememberColor9-v0 |
-| 17 | RememberShape3-v0 |
-| 18 | RememberShape5-v0 |
-| 19 | RememberShape9-v0 |
-| 20 | RememberShapeAndColor3x2-v0 |
-| 21 | RememberShapeAndColor3x3-v0 |
-| 22 | RememberShapeAndColor5x3-v0 |
-| 23 | BunchOfColors3-v0 |
-| 24 | BunchOfColors5-v0 |
-| 25 | BunchOfColors7-v0 |
-| 26 | SeqOfColors3-v0 |
-| 27 | SeqOfColors5-v0 |
-| 28 | SeqOfColors7-v0 |
-| 29 | ChainOfColors3-v0 |
-| 30 | ChainOfColors5-v0 |
-| 31 | ChainOfColors7-v0 |
-
-</td>
-</tr>
-</table>
-
 ## Data collection
 Experiments with T-Maze can be run without data collection. For other experiments, you need to collect data. Here we provide scripts for data collection for ViZDoom-Two-Colors and Minigrid-Memory.
 
@@ -233,16 +174,108 @@ Experiments with T-Maze can be run without data collection. For other experiment
 python3 src/additional/gen_vizdoom_data/gen_vizdoom_data.py
 
 # Create data for Minigrid-Memory:
-python3 src/additional/gen_minigrid_memory_data/gen_minigrid_memory_data.py
+# --random False -> one corridor length with one grid size in data (default in paper)
+# --random True -> different corridor lengths with one grid size from min to max
+python3 src/additional/gen_minigrid_memory_data/gen_minigrid_memory_data.py --random False
 
 # Download data for POPGym (247 Mb)
 mkdir -p data
 wget https://huggingface.co/datasets/avanturist/popgym-datasets-48-tasks/resolve/main/POPGym.zip -O data/POPGym.zip
 unzip -q data/POPGym.zip -d data/
 
-# Download data for MIKASA-Robo
-echo Follow instructions from README.md in https://github.com/CognitiveAISystems/MIKASA-Robo
+# Memory Maze
+echo Data can be collected with https://github.com/NM512/dreamerv3-torch
 ```
+
+
+## Classic Baselines
+### Atari
+
+#### Installation
+
+Dependencies can be installed with the following command:
+
+```bash
+cd Atari_MuJoCo/Atari
+conda env create -f conda_env.yml
+```
+
+#### Downloading datasets
+
+
+Create a directory for the dataset and load the dataset using [gsutil](https://cloud.google.com/storage/docs/gsutil_install#install). Replace `[DIRECTORY_NAME]` and `[GAME_NAME]` accordingly (e.g., `./dqn_replay` for `[DIRECTORY_NAME]` and `Breakout` for `[GAME_NAME]`)
+```
+mkdir [DIRECTORY_NAME]
+gsutil -m cp -R gs://atari-replay-datasets/dqn/[GAME_NAME] [DIRECTORY_NAME]
+```
+
+In the `wandb_config.yaml` in the main directory add the following lines to specify the directory with Atari data:
+
+```python
+atari:
+  data: '/path/to/atari/data/'
+```
+
+#### Example usage
+
+```python
+python3 Atari/train_rate_atari.py --game Breakout --num_mem_tokens 15 --mem_len 360 --n_head_ca 1 --mrv_act 'relu' --skip_dec_ffn --seed 123
+python3 Atari/train_rate_atari.py --game Qbert --num_mem_tokens 15 --mem_len 360 --n_head_ca 1 --mrv_act 'relu' --skip_dec_ffn --seed 123
+python3 Atari/train_rate_atari.py --game Seaquest --num_mem_tokens 15 --mem_len 360 --n_head_ca 1 --mrv_act 'relu' --skip_dec_ffn --seed 123
+python3 Atari/train_rate_atari.py --game Pong --num_mem_tokens 15 --mem_len 360 --n_head_ca 1 --mrv_act 'leaky_relu' --skip_dec_ffn --seed 123
+```
+
+### MuJoCo
+
+#### Installation
+
+Experiments require MuJoCo.
+Follow the instructions in the [mujoco-py repo](https://github.com/openai/mujoco-py) to install.
+Then, dependencies can be installed with the following command:
+
+```bash
+cd Atari_MuJoCo/MuJoCo
+conda env create -f conda_env.yml
+```
+
+### Downloading datasets
+
+Datasets are stored in the `data` directory.
+Install the [D4RL repo](https://github.com/rail-berkeley/d4rl), following the instructions there.
+Then, run the following script in order to download the datasets and save them in our format:
+
+```
+python download_d4rl_datasets.py
+```
+
+In the `wandb_config.yaml` in the main directory add the following lines:
+
+```python
+mujoco:
+  data_dir_prefix: '/path/to/mujoco/data/'
+```
+
+#### Example usage
+
+```python
+python3 MuJoCo/train_rate_mujoco_ca.py --env_id 0 --number_of_segments 3 --segment_length 20 --num_mem_tokens 5 --n_head_ca 1 --mrv_act 'relu' --skip_dec_ffn --seed 123
+```
+
+Where `env_id` - id of MuJoCo task:
+
+1. `env_id` - MuJoCo environment id:
+    - 0 → `halfcheetah-medium`
+    - 1 → `halfcheetah-medium-replay`
+    - 2 → `halfcheetah-expert`
+    - 3 → `walker2d-medium`
+    - 4 → `walker2d-medium-replay`
+    - 5 → `walker2d-expert`
+    - 6 → `hopper-medium`
+    - 7 → `hopper-medium-replay`
+    - 8 → `hopper-expert`
+    - 9 → `halfcheetah-medium-expert`
+    - 10 → `walker2d-medium-expert`
+    - 11 → `hopper-medium-expert`
 
 ## Citation
 If you find our work useful, please cite our paper:

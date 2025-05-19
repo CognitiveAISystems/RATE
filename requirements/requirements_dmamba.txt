@@ -1,0 +1,29 @@
+# python 3.9
+# PyTorch: 2.6.0+cu124, CUDA: 12.4
+
+pip==21
+setuptools==65.5.1
+wheel==0.38.0
+gymnasium==0.29.1
+gym==0.26.2
+# pip install torch==2.1.1 torchvision==0.16.1 torchaudio==2.1.1 --index-url https://download.pytorch.org/whl/cu118
+# conda install nvidia::cuda-toolkit=12.1
+einops==0.8.1
+causal-conv1d==1.2.0.post2
+mamba-ssm==1.2.0.post1
+
+"""
+conda create -p /home/jovyan/space/envs/dmamba/ python=3.9
+conda activate -p /home/jovyan/space/envs/dmamba/
+pip install -e .
+pip install pip==21
+pip install setuptools==65.5.1
+pip install wheel==0.38.0
+pip install gymnasium==0.29.1
+pip install gym==0.26.2
+pip install torch==2.1.1 torchvision==0.16.1 torchaudio==2.1.1 --index-url https://download.pytorch.org/whl/cu118
+pip install einops==0.8.1
+pip install causal-conv1d==1.2.0.post2
+pip install mamba-ssm==1.2.0.post1
+pip install wandb==0.18.5
+"""

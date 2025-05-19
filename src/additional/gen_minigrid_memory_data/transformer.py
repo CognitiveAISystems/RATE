@@ -3,7 +3,7 @@ import torch
 
 from einops import rearrange
 from torch import nn
-from utils import Module
+from src.additional.gen_minigrid_memory_data.utils import Module
 
 class MultiHeadAttention(nn.Module):
     """Multi Head Attention without dropout inspired by https://github.com/aladdinpersson/Machine-Learning-Collection

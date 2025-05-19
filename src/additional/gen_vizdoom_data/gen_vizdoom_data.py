@@ -18,6 +18,10 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from itertools import count
 
+import torch.multiprocessing as mp
+from torch.multiprocessing import Process, Queue
+import math
+
 
 env_args = {
     'simulator':'doom', 
@@ -79,62 +83,38 @@ env_args = {
     'visdom_ip':'http://10.0.0.1'                 
 }
 
+# Number of steps in episode
+EPISODE_TIMEOUT = 150
 
-if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def collect_episodes(rank, num_episodes, save_dir, env_args, device_id, queue):
+    # Set device for this process
+    torch.cuda.set_device(device_id)
+    device = torch.device(f"cuda:{device_id}")
+    
+    # Initialize environment
     env = doom_environment2.DoomEnvironment(env_args, idx=0, is_train=True, get_extra_info=False)
-    print("Number of env actions:", env.num_actions)
-    obs_shape = (3, env_args['screen_height'], env_args['screen_width'])
-    print(f"obs_shape: {obs_shape}")
-
     scene = 0
-    scenario = env_args['scenario_dir'] + env_args['scenario'].format(scene) # 0 % 63
+    scenario = env_args['scenario_dir'] + env_args['scenario'].format(scene)
     config = scenario
 
     env = env_vizdoom2.DoomEnvironmentDisappear(
         scenario=config,
         show_window=False,
         use_info=True,
-        use_shaping=False, #if False bonus reward if #shaping reward is always: +1,-1 in two_towers
+        use_shaping=False,
         frame_skip=2,
-        no_backward_movement=True)
+        no_backward_movement=True
+    )
 
+    # Initialize policy
     policy = models2.CNNPolicy((3, 64, 112), env_args).to(device)
-    checkpoint = torch.load(env_args['model_checkpoint'], map_location=lambda storage, loc: storage) 
+    checkpoint = torch.load(env_args['model_checkpoint'], map_location=lambda storage, loc: storage)
     policy.load_state_dict(checkpoint['model'])
     policy.eval()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    env = doom_environment2.DoomEnvironment(env_args, idx=0, is_train=True, get_extra_info=False)
-    obs_shape = (3, env_args['screen_height'], env_args['screen_width'])
-
-    scene = 0
-    scenario = env_args['scenario_dir'] + env_args['scenario'].format(scene) # 0 % 63
-    config = scenario
-
-    env = env_vizdoom2.DoomEnvironmentDisappear(
-        scenario=config,
-        show_window=False,
-        use_info=True,
-        use_shaping=False, #if False bonus reward if #shaping reward is always: +1,-1 in two_towers
-        frame_skip=2,
-        no_backward_movement=True)
-
-    policy = models2.CNNPolicy((3, 64, 112), env_args).to(device)
-    checkpoint = torch.load(env_args['model_checkpoint'], map_location=lambda storage, loc: storage) 
-    policy.load_state_dict(checkpoint['model'])
-    policy.eval()
-
-    NUMBER_OF_TRAIN_DATA = 5000 # 5000
-    EPISODE_TIMEOUT = 90 # 90
 
     returns_red, returns_green = [], []
-
-    save_dir = 'data/ViZDoom_Two_Colors'
-    os.makedirs(save_dir, exist_ok=True)
-
-    print(f"Generating {NUMBER_OF_TRAIN_DATA} episodes")
-    for i in tqdm(range(NUMBER_OF_TRAIN_DATA)):
+    
+    for i in range(num_episodes):
         obsList, actList, rewList, doneList, isRedList = [], [], [], [], []
         times = []
         obs = env.reset()
@@ -148,9 +128,7 @@ if __name__ == "__main__":
             result = policy(torch.from_numpy(obs['image']).unsqueeze(0).to(device), state, mask)
             action, state = result['actions'], result['states']
             
-            
             obs, reward, done, info = env.step(action.item())
-
 
             is_red = info['is_red']
             rewList.append(reward)
@@ -159,25 +137,74 @@ if __name__ == "__main__":
             isRedList.append(is_red)
 
             if done or t == EPISODE_TIMEOUT-1:
-
                 if is_red == 1.0:
                     returns_red.append(np.sum(rewList))
                 else:
                     returns_green.append(np.sum(rewList))
-
                 break
         
-        DATA = {'obs': np.array(obsList), # (1152, 3, 64, 112)
-                'action': np.array(actList),
-                'reward': np.array(rewList),
-                'done': np.array(doneList),
-                'is_red': np.array(isRedList)}
+        DATA = {
+            'obs': np.array(obsList),
+            'action': np.array(actList),
+            'reward': np.array(rewList),
+            'done': np.array(doneList),
+            'is_red': np.array(isRedList)
+        }
 
-        file_path = f'{save_dir}/train_data_{i}.npz'
+        episode_idx = rank * num_episodes + i
+        file_path = f'{save_dir}/train_data_{episode_idx}.npz'
         np.savez(file_path, **DATA)
-        
+        queue.put(1)
 
     env.close()
+
+if __name__ == "__main__":
+    # Set the start method to 'spawn' for CUDA multiprocessing
+    mp.set_start_method('spawn')
+    
+    # Get number of available GPUs
+    num_gpus = torch.cuda.device_count()
+    if num_gpus == 0:
+        raise RuntimeError("No GPU available. This script requires at least one GPU.")
+    
+    # Configuration
+    NUMBER_OF_TRAIN_DATA = 5000
+    NUM_PROCESSES = min(num_gpus * 8, 8)  # Use 2 processes per GPU, but no more than 8
+    EPISODES_PER_PROCESS = math.ceil(NUMBER_OF_TRAIN_DATA / NUM_PROCESSES)
+    
+    # Create save directory
+    save_dir = f'data/ViZDoom_Two_Colors_{EPISODE_TIMEOUT}'
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Progress tracking
+    progress_queue = Queue()
+    
+    print(f"Starting data collection with {NUM_PROCESSES} processes")
+    print(f"Episodes per process: {EPISODES_PER_PROCESS}")
+    
+    # Start processes
+    processes = []
+    for rank in range(NUM_PROCESSES):
+        device_id = rank % num_gpus
+        p = Process(target=collect_episodes, 
+                   args=(rank, EPISODES_PER_PROCESS, save_dir, env_args, device_id, progress_queue))
+        p.start()
+        processes.append(p)
+    
+    # Monitor progress
+    total_episodes = 0
+    pbar = tqdm(total=NUMBER_OF_TRAIN_DATA)
+    while total_episodes < NUMBER_OF_TRAIN_DATA:
+        progress_queue.get()
+        total_episodes += 1
+        pbar.update(1)
+    
+    # Wait for all processes to finish
+    for p in processes:
+        p.join()
+    
+    pbar.close()
+    print("Data collection completed!")
 
 
     """

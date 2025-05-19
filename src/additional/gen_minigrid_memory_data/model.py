@@ -5,7 +5,7 @@ from torch.distributions import Categorical
 from torch import nn
 from torch.nn import functional as F
 
-from transformer import Transformer
+from src.additional.gen_minigrid_memory_data.transformer import Transformer
 
 class ActorCriticModel(nn.Module):
     def __init__(self, config, observation_space, action_space_shape, max_episode_length):

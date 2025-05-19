@@ -1,17 +1,62 @@
 from torch.utils.data import random_split, DataLoader
 
-def create_dataloader(config, max_length, segment_length):
-    """
-    Creates appropriate dataloader based on environment name
-    
+
+def create_dataloader(config: dict, max_length: int, segment_length: int) -> DataLoader:
+    """Creates and configures appropriate DataLoader based on the environment name.
+
+    This function serves as a factory for creating DataLoaders for different environments.
+    It supports multiple environments including ViZDoom-Two-Colors, Minigrid Memory, Memory Maze,
+    POPGym, MIKASA-Robo, and TMaze. Each environment has its specific dataset class
+    and configuration requirements.
+
     Args:
-        config: Configuration dictionary
-        max_length: Maximum sequence length
-        segment_length: Length of each segment
-    
+        config: Configuration dictionary containing environment and training settings.
+            Required keys:
+            - model.env_name: Name of the environment (str)
+            - data.path_to_dataset: Path to dataset directory (str)
+            - data.gamma: Discount factor for reward calculation (float)
+            - data.only_non_zero_rewards: Filter for non-zero rewards (bool, optional)
+            - training.batch_size: Batch size for training (int)
+            - training.max_segments: Maximum number of segments (int, for TMaze)
+            - min_n_final: Minimum number of final states (int, for TMaze)
+            - max_n_final: Maximum number of final states (int, for TMaze)
+        max_length: Maximum sequence length for trajectories.
+            Determines how many steps from each trajectory are used.
+        segment_length: Length of each trajectory segment.
+            Used for environments that require trajectory segmentation.
+
     Returns:
-        train_dataloader: DataLoader for training data
-        val_dataloader: DataLoader for validation data (None for vizdoom)
+        DataLoader: Configured DataLoader for the specified environment.
+            For most environments, returns only training DataLoader.
+            For TMaze, returns training DataLoader with validation split.
+
+    Supported Environments:
+        - "vizdoom": ViZDoom environment with RGB observations
+        - "minigrid_memory": Minigrid environment with memory requirements
+        - "memory_maze": Memory Maze environment
+        - "popgym": POPGym environments (Battleship, Minesweeper, etc.)
+        - "mikasa_robo": MIKASA-Robo manipulation environment
+        - "tmaze": TMaze environment with hint-based navigation
+
+    Notes:
+        - Each environment uses its specific dataset class with appropriate
+          preprocessing and data loading strategies.
+        - For ViZDoom and Minigrid Memory, observations are normalized.
+        - TMaze environment includes validation split (80% train, 20% validation).
+        - Batch sizes and number of workers are optimized per environment.
+        - All DataLoaders use pin_memory=True for faster data transfer to GPU.
+        - For TMaze, additional parameters control hint steps and reward conditions.
+
+    Examples:
+        >>> config = {
+        ...     "model": {"env_name": "vizdoom"},
+        ...     "data": {
+        ...         "path_to_dataset": "path/to/data",
+        ...         "gamma": 0.99
+        ...     },
+        ...     "training": {"batch_size": 32}
+        ... }
+        >>> dataloader = create_dataloader(config, max_length=150, segment_length=50)
     """
     if config["model"]["env_name"] == "vizdoom":
         from envs_datasets import ViZDoomIterDataset

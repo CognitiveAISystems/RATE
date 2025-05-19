@@ -8,11 +8,29 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from RATE.utils import LogUniformSampler, sample_logits, ProjectedAdaptiveLogSoftmax
 from RATE.blocks import RelPartialLearnableDecoderLayer, PositionalEmbedding
 from RATE.env_encoders import ObsEncoder, ActEncoder, RTGEncoder, ActDecoder
 
-class MemTransformerLM(nn.Module):
+class RATE(nn.Module):
+    """Memory-augmented Transformer model for decision making.
+    
+    Args:
+        state_dim (int): Dimension of state observations
+        act_dim (int): Dimension of actions
+        n_layer (int): Number of transformer layers
+        n_head (int): Number of attention heads
+        n_head_ca (int): Number of MRV cross-attention heads
+        d_model (int): Model dimension
+        d_head (int): Dimension of each attention head
+        d_inner (int): Dimension of inner feed-forward network
+        dropout (float): Dropout rate
+        dropatt (float): Attention dropout rate
+        mem_len (int): Length of memory cache
+        num_mem_tokens (int): Number of memory tokens
+        mem_at_end (bool): If True, memory tokens are appended at sequence end
+        env_name (str): Name of the environment
+    """
+
     def __init__(
         self, 
         state_dim, 
@@ -45,7 +63,7 @@ class MemTransformerLM(nn.Module):
         **kwargs
     ):
         
-        super(MemTransformerLM, self).__init__()
+        super(RATE, self).__init__()
 
         self.d_embed = d_model
         self.d_model = d_model
@@ -250,7 +268,6 @@ class MemTransformerLM(nn.Module):
                     torch.tensor(self.act_dim),
                     actions,
                 )
-            
             action_embeddings = self.action_embeddings(actions).squeeze(2)
         else:
             action_embeddings = self.action_embeddings(actions)
@@ -274,7 +291,23 @@ class MemTransformerLM(nn.Module):
 
         return B, B1, states, reshape_required
     
-    def forward(self, states, actions, rtgs, target, timesteps, *mems, mem_tokens=None, masks=None):
+    def forward(self, states, actions, rtgs, target, timesteps, *mems, mem_tokens=None, masks=None, hidden=None):
+        """Forward pass through the model.
+        
+        Args:
+            states: State observations
+            actions: Actions
+            rtgs: Return-to-go values
+            target: Target actions
+            timesteps: Timestep indices
+            mems: Memory cache
+            mem_tokens: Memory tokens
+            masks: Attention masks
+            hidden: Hidden state for recurrent models
+            
+        Returns:
+            dict: Contains logits, new memory cache, and updated memory tokens
+        """
         
         if not mems: mems = self.init_mems(states.device)
         B, B1, states, reshape_required = self.reshape_states(states)
@@ -338,6 +371,14 @@ class MemTransformerLM(nn.Module):
 ######################################################################################    
 
 class ScaledDotProductAttention(torch.nn.Module):
+    """Scaled dot-product attention mechanism.
+    
+    Args:
+        dropout_p (float): Dropout probability
+        is_causal (bool): If True, uses causal masking
+        scale (float): Optional scaling factor
+    """
+
     def __init__(self, dropout_p=0.0, is_causal=False, scale=None):
         super(ScaledDotProductAttention, self).__init__()
         self.dropout_p = dropout_p
@@ -345,6 +386,17 @@ class ScaledDotProductAttention(torch.nn.Module):
         self.scale = scale
 
     def forward(self, query, key, value, attn_mask=None):
+        """Compute attention weights and context vector.
+        
+        Args:
+            query: Query tensor
+            key: Key tensor
+            value: Value tensor
+            attn_mask: Optional attention mask
+            
+        Returns:
+            tuple: (output, attention_weights)
+        """
         L, S = query.size(-2), key.size(-2)
         scale_factor = 1 / query.size(-1)**0.5 if self.scale is None else self.scale
     
@@ -372,6 +424,19 @@ class ScaledDotProductAttention(torch.nn.Module):
     
 
 class MultiHeadAttention(nn.Module):
+    """Multi-head attention mechanism.
+    
+    Args:
+        d_q (int): Query dimension
+        d_k (int): Key dimension
+        d_v (int): Value dimension
+        d_model (int): Model dimension
+        num_heads (int): Number of attention heads
+        dropout_p (float): Dropout probability
+        is_causal (bool): If True, uses causal masking
+        scale (float): Optional scaling factor
+    """
+
     def __init__(self, d_q, d_k, d_v, d_model, num_heads, dropout_p=0.0, is_causal=False, scale=None):
         super(MultiHeadAttention, self).__init__()
         self.num_heads = num_heads
@@ -393,6 +458,17 @@ class MultiHeadAttention(nn.Module):
         return x.permute(0, 2, 1, 3)
 
     def forward(self, q, k, v, attn_mask=None):
+        """Compute multi-head attention.
+        
+        Args:
+            q: Query tensor
+            k: Key tensor
+            v: Value tensor
+            attn_mask: Optional attention mask
+            
+        Returns:
+            tuple: (output, attention_weights)
+        """
         batch_size = q.size(0)
         # q: (bs, sl, d_q)
         # k: (bs, sl, d_k)

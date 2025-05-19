@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from torch import nn
-from environments.minigrid_env import Minigrid
+from src.additional.gen_minigrid_memory_data.environments.minigrid_env import Minigrid
 
 def create_env(config:dict, length=31, render:bool=False):
     """Initializes an environment based on the provided environment name.

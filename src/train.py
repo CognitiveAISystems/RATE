@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from typing import Optional
+from typing import Optional, List
 import tyro
 from tyro.conf import FlagConversionOff
 import wandb
@@ -20,7 +20,6 @@ if os.path.exists("wandb_config.yaml"):
     os.environ['WANDB_API_KEY'] = wandb_config['wandb_api']
 else:
     print("wandb_config.yaml does not exist, using default user API key...")
-
 
 
 @dataclass
@@ -134,6 +133,21 @@ class ModelConfig:
     padding_idx: Optional[int] = None
     # CQL alpha parameter (for CQL.py only!, default: 1.0)
     cql_alpha: Optional[float] = None # 1.0 (for CQL only)
+    
+    # Parameters for BC
+    backbone: Optional[str] = None  # Choose between 'mlp' and 'lstm'
+    lstm_layers: Optional[int] = None   # Number of LSTM layers
+    bidirectional: FlagConversionOff[Optional[bool]] = None  # Use bidirectional LSTM
+    reset_hidden_state_batch: FlagConversionOff[Optional[bool]] = None  # Reset hidden state for each batch
+
+    # Parameters for DMamba
+    token_mixer: Optional[str] = None  # ['mamba'] Choose between 'mamba' and 'attn'
+    window_size: Optional[int] = None  # [4] Window size for convolutional token mixer
+    conv_proj: FlagConversionOff[Optional[bool]] = None  # [True] Use convolutional token mixer projection
+
+    # Parameters for LSDT
+    kernel_size: Optional[int] = None  # [5] Kernel size for convolutional layer
+    convdim: Optional[int] = None  # [128] Output channel size for convolutional layer
 
 @dataclass
 class OnlineInferenceConfig:

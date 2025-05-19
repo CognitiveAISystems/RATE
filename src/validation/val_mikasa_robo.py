@@ -19,10 +19,6 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
             results = model(x_cond, actions, rtgs,None, timestep, *saved_context, mem_tokens=mem_tokens)
         else:
             results = model(x_cond, actions, rtgs,None, timestep, mem_tokens=mem_tokens) 
-            
-        # logits = results[0][0].detach()[:,-1,:]
-        # mem_tokens = results[1]
-        # memory = results[0][2:]
 
         logits = results['logits'][:,-1,:]
         memory = results['new_mems']
@@ -77,7 +73,6 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
     for t in range(episode_timeout):
         actions = torch.cat([actions, torch.zeros((envs_num, 1, config['model']['act_dim']), device=device)], dim=1)
         
-        # RATE / RMT / TrXL
         if config["model_mode"] not in ['DT', 'DTXL']:
             # For non-DT models, truncate sequences when they exceed history length
             if actions.shape[0] > HISTORY_LEN:
@@ -127,10 +122,6 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
                 act_to_pass = None 
         
         states_norm = states / 255.0
-        prt = act_to_pass.shape if act_to_pass is not None else None
-        mem_tokens_ = mem_tokens.shape if mem_tokens is not None else None
-        saved_context_ = saved_context[0].shape if saved_context is not None else None
-        # print(f"\n{states_norm.shape=} | {prt} | {target_return.shape=} | {timesteps.shape=} | {mem_tokens_} | {saved_context_}")
 
         if config["model_mode"] in ["BC", "CQL", "IQL"]:
             states_norm = states_norm[:, -1:, :, :, :]

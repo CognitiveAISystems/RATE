@@ -133,3 +133,16 @@ val_mikasa_from_ckpt.py
 val_mikasa_from_env_dir.py
 train_time/
 validate_speed/
+
+*.DS_Store
+visualize_attention.py
+val_mikasa_from_env_dir.py
+val_mikasa_from_ckpt.py
+val_mikasa_dp.py
+test_vizdoom_data.ipynb
+test_minigrid_memory.ipynb
+popgym_random_agent.py
+n_2025.ipynb
+memory_rl_experiments/
+minigrid_memory_val_results/
+run_experiments/old/

@@ -5,17 +5,36 @@ import os
 from tqdm import tqdm
 
 class MIKASARoboIterDataset(Dataset):
-    def __init__(self, directory, gamma, max_length, normalize):
-        """_summary_
+    """A PyTorch Dataset for loading and processing MIKASA robot manipulation trajectories.
+    
+    This dataset handles loading and preprocessing of robot manipulation trajectories
+    stored as numpy files. It processes RGB observations, actions, and success signals
+    from robot manipulation tasks.
+
+    Attributes:
+        directory (str): Path to the directory containing trajectory data files.
+        file_list (list): List of all data files in the directory.
+        gamma (float): Discount factor for computing return-to-go (RTG).
+        max_length (int): Maximum sequence length for trajectory segments.
+        normalize (int): Whether to normalize RGB observations (1 for normalization).
+        filtered_list (list): List of filtered file names after processing.
+
+    Note:
+        The dataset expects each trajectory file to contain numpy arrays with keys:
+        - 'rgb': RGB observations of shape (T, H, W, C)
+        - 'action': Robot actions
+        - 'success': Success signals (used as rewards)
+        - 'done': Episode termination flags
+    """
+
+    def __init__(self, directory: str, gamma: float, max_length: int, normalize: int):
+        """Initialize the MIKASA robot dataset.
 
         Args:
-            directory (str): path to the directory with data files
-            gamma (float): discount factor
-            max_length (int): maximum number of timesteps used in batch generation
-                                (max in dataset: 1001)
-            only_non_zero_rewards (bool): if True then use only trajectories
-                                            with non-zero reward in the first
-                                            max_length timesteps
+            directory: Path to the directory containing trajectory data files.
+            gamma: Discount factor for computing return-to-go values.
+            max_length: Maximum number of timesteps to use in each trajectory segment.
+            normalize: If 1, normalizes RGB observations to [0, 1] range by dividing by 255.
         """
         self.directory = directory
         self.file_list = os.listdir(directory)
@@ -26,15 +45,17 @@ class MIKASARoboIterDataset(Dataset):
         print('Filtering data...')
         self.filter_trajectories()
 
-    def discount_cumsum(self, x):
-        """
-        Compute the discount cumulative sum of a 1D array.
+    def discount_cumsum(self, x: np.ndarray) -> np.ndarray:
+        """Compute the discounted cumulative sum of rewards.
+
+        This method implements the standard discounted sum calculation:
+        G_t = r_t + γ * r_{t+1} + γ^2 * r_{t+2} + ... + γ^{T-t} * r_T
 
         Args:
-            x (ndarray): 1D array of values.
+            x: 1D numpy array of reward values (success signals).
 
         Returns:
-            ndarray: Discount cumulative sum of the input array.
+            A 1D numpy array containing the discounted cumulative sums for each timestep.
         """
         discount_cumsum = np.zeros_like(x)
         discount_cumsum[-1] = x[-1]
@@ -42,7 +63,18 @@ class MIKASARoboIterDataset(Dataset):
             discount_cumsum[t] = x[t] + self.gamma * discount_cumsum[t+1]
         return discount_cumsum
     
-    def filter_trajectories(self):
+    def filter_trajectories(self) -> None:
+        """Filter and process trajectory files.
+
+        This method processes all trajectory files in the directory and stores
+        their names in filtered_list. Currently, all files are included in the
+        filtered list, but this method can be extended to implement additional
+        filtering criteria.
+
+        Note:
+            The method uses memory-mapped loading (mmap_mode='r') for efficient
+            file handling with large datasets.
+        """
         # for idx in tqdm(range(100)):
         for idx in tqdm(range(len(self.file_list))):
             file_path = os.path.join(self.directory, self.file_list[idx])
@@ -50,10 +82,35 @@ class MIKASARoboIterDataset(Dataset):
             # if data['rgb'].shape[0] <= self.max_length:
             self.filtered_list.append(self.file_list[idx])
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Get the total number of available trajectory files.
+
+        Returns:
+            The number of trajectory files available in the dataset after filtering.
+        """
         return len(self.filtered_list)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple:
+        """Get a trajectory segment by index.
+
+        Args:
+            idx: Index of the trajectory to retrieve.
+
+        Returns:
+            A tuple containing:
+                - s (torch.Tensor): RGB observations of shape (max_length, C, H, W)
+                - a (torch.Tensor): Actions of shape (max_length,)
+                - rtg (torch.Tensor): Return-to-go values of shape (max_length, 1)
+                - d (torch.Tensor): Done flags of shape (max_length,)
+                - timesteps (torch.Tensor): Timestep indices of shape (max_length,)
+                - mask (torch.Tensor): Mask tensor of shape (max_length,)
+
+        Note:
+            - RGB observations are optionally normalized to [0, 1] range
+            - All tensors are trimmed to max_length
+            - Success signals are used as rewards for computing return-to-go
+            - Data is loaded using memory mapping for efficiency
+        """
         file_path = os.path.join(self.directory, self.filtered_list[idx])
         #print(file_path)
         # data = np.load(file_path)

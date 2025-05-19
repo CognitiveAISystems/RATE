@@ -8,15 +8,35 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data import ConcatDataset
 import torch.nn.functional as F
+import random
 
-OMP_NUM_THREADS = '1'
-os.environ['OMP_NUM_THREADS'] = OMP_NUM_THREADS 
 
-def TMaze_data_generator(max_segments, multiplier, hint_steps, desired_reward=1.0, win_only=True, segment_length=30):
+def TMaze_data_generator(max_segments: int, multiplier: int, hint_steps: int, 
+                        desired_reward: float = 1.0, win_only: bool = True, 
+                        segment_length: int = 30) -> None:
+    """Generate and save TMaze trajectory data for different segment lengths.
+
+    This function generates trajectory data for TMaze environments with varying corridor
+    lengths and saves them as pickle files. It ensures data availability for training
+    by generating missing data files.
+
+    Args:
+        max_segments: Maximum number of segments to generate data for.
+        multiplier: Number of trajectories to generate for each segment length.
+        hint_steps: Number of initial steps where the hint is preserved.
+        desired_reward: Target reward value for successful trajectories.
+        win_only: If True, only generate winning trajectories.
+        segment_length: Base length for segment calculations.
+
+    Note:
+        Generated data is saved in 'data/TMaze/' directory with filenames
+        following the pattern 'data_T_{segment_length}.pickle'.
+    """
     current_directory = glob.os.getcwd()
     gen_flag= False
     for i in range(1, max_segments+1):
-        name = f'new_tmaze_data_segment_{i}_multiplier_{multiplier}_hint_steps_{hint_steps}_desired_reward_{desired_reward}_win_only_{win_only}_segment_length_{segment_length}'
+        # name = f'new_tmaze_data_segment_{i}_multiplier_{multiplier}_hint_steps_{hint_steps}_desired_reward_{desired_reward}_win_only_{win_only}_segment_length_{segment_length}'
+        name = f'data_T_{i*segment_length}'
         data_path = current_directory + '/data/TMaze/'
         save_path = data_path + f"{name}.pickle"
         if not os.path.exists(save_path):
@@ -32,7 +52,41 @@ def TMaze_data_generator(max_segments, multiplier, hint_steps, desired_reward=1.
             
 
 class TMaze_dataset(Dataset):
-    def __init__(self, path, gamma, mode, max_length):
+    """A PyTorch Dataset for loading and processing TMaze environment trajectories.
+    
+    This dataset handles loading and preprocessing of TMaze environment trajectories
+    stored as pickle files. It processes observations, actions, and rewards from
+    the TMaze environment with support for different trajectory modes.
+
+    Attributes:
+        data (dict): Dictionary containing trajectory data loaded from pickle file.
+        gamma (float): Discount factor for computing return-to-go (RTG).
+        max_length (int): Maximum sequence length for trajectory segments.
+        mode (str): Trajectory processing mode:
+            - "equal": Fixed length trajectories (90/89/90)
+            - "diff": Variable length trajectories (50/49/50 or 76/77/76) padded to max_length
+
+    Note:
+        The dataset expects each trajectory to contain:
+        - 'obs': Observations of shape (T, channels) containing:
+            - y position
+            - hint
+            - flag
+            - noise
+        - 'action': Discrete actions in [0, 1, 2, 3]
+        - 'rtg': Return-to-go values
+        - 'done': Episode termination flags
+    """
+
+    def __init__(self, path: str, gamma: float, mode: str, max_length: int):
+        """Initialize the TMaze dataset.
+
+        Args:
+            path: Path to the pickle file containing trajectory data.
+            gamma: Discount factor for computing return-to-go values.
+            mode: Trajectory processing mode ("equal" or "diff").
+            max_length: Maximum sequence length for trajectory segments.
+        """
         with open(path, 'rb') as f:
             self.data = pickle.load(f)
             
@@ -44,14 +98,47 @@ class TMaze_dataset(Dataset):
         diff - 50/49/50 or 76/77/76 padded to 90/89/90
         """
         
-    def discount_cumsum(self, x):
+    def discount_cumsum(self, x: np.ndarray) -> np.ndarray:
+        """Compute the discounted cumulative sum of rewards.
+
+        This method implements the standard discounted sum calculation:
+        G_t = r_t + γ * r_{t+1} + γ^2 * r_{t+2} + ... + γ^{T-t} * r_T
+
+        Args:
+            x: 1D numpy array of reward values.
+
+        Returns:
+            A 1D numpy array containing the discounted cumulative sums for each timestep.
+        """
         discount_cumsum = np.zeros_like(x)
         discount_cumsum[-1] = x[-1]
         for t in reversed(range(x.shape[0]-1)):
             discount_cumsum[t] = x[t] + self.gamma * discount_cumsum[t+1]
         return discount_cumsum
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> tuple:
+        """Get a trajectory segment by index.
+
+        Args:
+            index: Index of the trajectory to retrieve.
+
+        Returns:
+            A tuple containing:
+                - s (torch.Tensor): Observations of shape (max_length, channels)
+                - a (torch.Tensor): Actions of shape (max_length,)
+                - rtg (torch.Tensor): Return-to-go values of shape (max_length,)
+                - d (torch.Tensor): Done flags of shape (max_length,)
+                - timesteps (torch.Tensor): Timestep indices of shape (max_length,)
+                - mask (torch.Tensor): Mask tensor of shape (max_length,)
+
+        Note:
+            In "diff" mode, shorter trajectories are padded to max_length:
+                - Observations are padded with the last state
+                - Actions are padded with -10
+                - Done flags are padded with 2
+                - Masks are padded with 0
+                - Return-to-go values are padded with 0
+        """
         channels = self.data[index]['obs'].shape[1]
         # channels = 4
         if self.mode == "equal":
@@ -101,7 +188,23 @@ class TMaze_dataset(Dataset):
     
     
 class CutDataset(Dataset):
-    def __init__(self, dataset):
+    """A dataset wrapper that returns every other trajectory from the source dataset.
+    
+    This class is used to reduce the dataset size by taking only every second
+    trajectory from the source dataset. Useful for creating smaller validation sets
+    or balancing dataset sizes.
+
+    Attributes:
+        dataset (Dataset): Source dataset to sample from.
+        length (int): Length of the cut dataset (half of source dataset).
+    """
+
+    def __init__(self, dataset: Dataset):
+        """Initialize the cut dataset.
+
+        Args:
+            dataset: Source dataset to sample from.
+        """
         self.dataset = dataset
         self.length = len(dataset) // 2
 
@@ -113,9 +216,52 @@ class CutDataset(Dataset):
         return self.length
     
 class TMazeCombinedDataLoader:
-    def __init__(self, n_init, n_final, multiplier, hint_steps, 
-                 batch_size, mode, cut_dataset, one_mixed_dataset=False, 
-                 desired_reward=1.0, win_only=True, segment_length=30):
+    """A data loader that combines TMaze trajectories of different lengths.
+    
+    This class creates a combined dataset from multiple TMaze datasets with
+    different corridor lengths, allowing training on a mixture of trajectory
+    lengths. It supports both sequential and mixed dataset creation modes.
+
+    Attributes:
+        n_init (int): Initial number of segments to start with.
+        n_final (int): Final number of segments to include.
+        multiplier (int): Number of trajectories per segment length.
+        hint_steps (int): Number of initial steps where hint is preserved.
+        batch_size (int): Batch size for the data loader.
+        mode (str): Dataset combination mode.
+        desired_reward (float): Target reward for successful trajectories.
+        win_only (bool): Whether to include only winning trajectories.
+        segment_length (int): Base length for segment calculations.
+        dataset (Dataset): Combined dataset.
+        dataloader (DataLoader): PyTorch DataLoader for the combined dataset.
+
+    Note:
+        The combined dataset can be created in two modes:
+        1. Sequential (one_mixed_dataset=False): Adds datasets of increasing
+           segment lengths sequentially, optionally cutting previous datasets
+        2. Mixed (one_mixed_dataset=True): Combines all segment lengths into
+           a single mixed dataset
+    """
+
+    def __init__(self, n_init: int, n_final: int, multiplier: int, hint_steps: int,
+                 batch_size: int, mode: str, cut_dataset: bool, 
+                 one_mixed_dataset: bool = False, desired_reward: float = 1.0,
+                 win_only: bool = True, segment_length: int = 30):
+        """Initialize the combined data loader.
+
+        Args:
+            n_init: Initial number of segments to start with.
+            n_final: Final number of segments to include.
+            multiplier: Number of trajectories per segment length.
+            hint_steps: Number of initial steps where hint is preserved.
+            batch_size: Batch size for the data loader.
+            mode: Dataset combination mode.
+            cut_dataset: Whether to cut previous datasets when adding new ones.
+            one_mixed_dataset: Whether to create a mixed dataset instead of sequential.
+            desired_reward: Target reward for successful trajectories.
+            win_only: Whether to include only winning trajectories.
+            segment_length: Base length for segment calculations.
+        """
         self.n_init = n_init
         self.n_final = n_final
         self.multiplier = multiplier
@@ -135,7 +281,8 @@ class TMazeCombinedDataLoader:
         return train_dataset
 
     def _get_segment_dataloaders(self, N, multiplier, hint_steps, maxN, mode, desired_reward=1.0, win_only=True):
-        name = f'new_tmaze_data_segment_{N}_multiplier_{multiplier}_hint_steps_{hint_steps}_desired_reward_{desired_reward}_win_only_{win_only}_segment_length_{self.segment_length}'
+        # name = f'new_tmaze_data_segment_{N}_multiplier_{multiplier}_hint_steps_{hint_steps}_desired_reward_{desired_reward}_win_only_{win_only}_segment_length_{self.segment_length}'
+        name = f'data_T_{self.n_final*self.segment_length}'
         data_path = f'data/TMaze/{name}.pickle'
 
         train_dataset = self._get_dataloaders(path=data_path, gamma=1.0, mode="diff", max_length=self.segment_length*maxN)
@@ -181,13 +328,41 @@ class TMazeCombinedDataLoader:
 
 
 
-def generate_trajectory(episode_timeout, corridor_length, hint_steps, win, seed_env, seed_noise, desired_reward=1.0): 
-    """
-    seed_env: 0 -> down, 1 -> up
+def generate_trajectory(episode_timeout: int, corridor_length: int, hint_steps: int,
+                       win: bool, seed_env: int, seed_noise: int,
+                       desired_reward: float = 1.0) -> tuple:
+    """Generate a single TMaze trajectory.
+
+    This function generates a trajectory in the TMaze environment following
+    an optimal policy based on the hint and win condition.
+
+    Args:
+        episode_timeout: Maximum number of steps in the episode.
+        corridor_length: Length of the corridor in the maze.
+        hint_steps: Number of initial steps where hint is preserved.
+        win: Whether to generate a winning trajectory.
+        seed_env: Environment seed (0 for down, 1 for up).
+        seed_noise: Seed for noise generation.
+        desired_reward: Target reward for successful trajectories.
+
     Returns:
-        - states: {y, hint, flag, noise}
-        - actions: {act}, act in [0, 1, 2, 3]
-        - returns_to_go: {rtg}, rtg in [0, 1]
+        A tuple containing:
+            - states (ndarray): Observations of shape (T, 4) containing:
+                - y position
+                - hint
+                - flag
+                - noise
+            - actions (ndarray): Discrete actions in [0, 1, 2, 3]
+            - returns_to_go (ndarray): Return-to-go values
+            - dones (ndarray): Episode termination flags
+
+    Note:
+        The optimal policy follows these rules:
+        1. First step: Move right (action 0)
+        2. At corridor end:
+            - If win=True: Move according to hint
+            - If win=False: Move opposite to hint
+        3. Otherwise: Move right (action 0)
     """
     # Initialization:
     np.random.seed(seed_env)
@@ -249,9 +424,37 @@ def generate_trajectory(episode_timeout, corridor_length, hint_steps, win, seed_
     return np.array(obss)[:, 1:], np.array(acts), np.array(rtgs), np.array(dones) #[:, 1:]
 
 
-def generate_dict_with_trajectories(segments, multiplier, hint_steps, desired_reward=1.0, win_only=True, segment_length=30):
+def generate_dict_with_trajectories(segments: int, multiplier: int, hint_steps: int,
+                                  desired_reward: float = 1.0, win_only: bool = True,
+                                  segment_length: int = 30) -> None:
+    """Generate and save a dictionary of TMaze trajectories.
+
+    This function generates multiple trajectories for the TMaze environment
+    and saves them as a dictionary in a pickle file. It supports both
+    win-only and mixed win/loss trajectory generation.
+
+    Args:
+        segments: Number of segments to generate trajectories for.
+        multiplier: Number of trajectories to generate per segment.
+        hint_steps: Number of initial steps where hint is preserved.
+        desired_reward: Target reward for successful trajectories.
+        win_only: Whether to generate only winning trajectories.
+        segment_length: Base length for segment calculations.
+
+    Note:
+        Generated data is saved as a dictionary where each key is an index
+        and the value is a dictionary containing:
+        - 'obs': Observations
+        - 'action': Actions
+        - 'rtg': Return-to-go values
+        - 'done': Episode termination flags
+
+        If win_only is False, the multiplier is split evenly between
+        winning and losing trajectories.
+    """
     current_directory = glob.os.getcwd()
-    name = f'new_tmaze_data_segment_{segments}_multiplier_{multiplier}_hint_steps_{hint_steps}_desired_reward_{desired_reward}_win_only_{win_only}_segment_length_{segment_length}'
+    # name = f'new_tmaze_data_segment_{segments}_multiplier_{multiplier}_hint_steps_{hint_steps}_desired_reward_{desired_reward}_win_only_{win_only}_segment_length_{segment_length}'
+    name = f'data_T_{segments*segment_length}'
     data_path = current_directory + '/data/TMaze/'
     isExist = os.path.exists(data_path)
     save_path = data_path + f"{name}.pickle"
@@ -267,20 +470,38 @@ def generate_dict_with_trajectories(segments, multiplier, hint_steps, desired_re
     if win_only:
         for seed_env in [0, 1]:
             for seed_noise in tqdm(range(multiplier)):
-                obss, acts, rtgs, dones = generate_trajectory(episode_timeout=segment_length*segments, corridor_length=segment_length*segments-2, 
-                                                            hint_steps=hint_steps, win=True, seed_env=seed_env, seed_noise=seed_noise, desired_reward=desired_reward)
+                L = random.randint(1, segment_length*segments-2)
+                obss, acts, rtgs, dones = generate_trajectory(
+                    episode_timeout=L+2, 
+                    corridor_length=L, 
+                    hint_steps=hint_steps, win=True, seed_env=seed_env, 
+                    seed_noise=seed_noise, desired_reward=desired_reward
+                )
+                
                 data[iteration] = {'obs': obss, 'action': acts, 'rtg': rtgs, 'done': dones}
                 iteration += 1
     else:
         for seed_env in [0, 1]:
             for seed_noise in tqdm(range(multiplier//2)):
-                obss, acts, rtgs, dones = generate_trajectory(episode_timeout=segment_length*segments, corridor_length=segment_length*segments-2, 
-                                                            hint_steps=hint_steps, win=True, seed_env=seed_env, seed_noise=seed_noise, desired_reward=desired_reward)
+                L = random.randint(1, segment_length*segments-2)
+                obss, acts, rtgs, dones = generate_trajectory(
+                    episode_timeout=L+2, 
+                    corridor_length=L, 
+                    hint_steps=hint_steps, win=True, seed_env=seed_env, 
+                    seed_noise=seed_noise, desired_reward=desired_reward
+                )
+
                 data[iteration] = {'obs': obss, 'action': acts, 'rtg': rtgs, 'done': dones}
                 iteration += 1
             for seed_noise in tqdm(range(multiplier//2, multiplier)):
-                obss, acts, rtgs, dones = generate_trajectory(episode_timeout=segment_length*segments, corridor_length=segment_length*segments-2, 
-                                                            hint_steps=hint_steps, win=False, seed_env=seed_env, seed_noise=seed_noise, desired_reward=desired_reward)
+                L = random.randint(1, segment_length*segments-2)
+                obss, acts, rtgs, dones = generate_trajectory(
+                    episode_timeout=L+2, 
+                    corridor_length=L, 
+                    hint_steps=hint_steps, win=False, seed_env=seed_env, 
+                    seed_noise=seed_noise, desired_reward=desired_reward
+                )
+
                 data[iteration] = {'obs': obss, 'action': acts, 'rtg': rtgs, 'done': dones}
                 iteration += 1
 

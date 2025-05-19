@@ -32,51 +32,64 @@ class InferenceHandler(BaseTrainer):
 
         self.model.eval()
         with torch.no_grad():
-            desired_reward = 1.0
-            goods, bads = 0, 0
-            timers = []
-            rewards = []
-            pbar2 = range(len(seeds_list))
+            batch_size = len(seeds_list)
+            
+            # inference on corridor_length = train corridor_length
+            rewards, successes = get_returns_TMaze(
+                model=self.model,
+                ret=1.0,
+                seeds=seeds_list,
+                episode_timeout=episode_timeout,
+                corridor_length=corridor_length,
+                context_length=self.config["training"]["context_length"],
+                device=self.device,
+                config=self.config,
+                create_video=False,
+            )
 
-            for indx, iii in enumerate(pbar2):
-                episode_return, act_list, t, _, delta_t, attn_map = \
-                    get_returns_TMaze(
-                        model=self.model,
-                        ret=desired_reward,
-                        seed=seeds_list[iii],
-                        episode_timeout=episode_timeout,
-                        corridor_length=corridor_length,
-                        context_length=self.config["training"]["context_length"],
-                        device=self.device,
-                        config=self.config,
-                        create_video=False,
-                    )
-
-                if episode_return == desired_reward:
-                    goods += 1
-                else:
-                    bads += 1
-
-                timers.append(delta_t)
-                rewards.append(episode_return)
-
-                self.pbar.set_description(f"[{text}] | [inference | {indx+1}/{len(seeds_list)}] ep {self.epoch+1} reward {episode_return}")
-
-            suc_rate = goods / (goods + bads)
-            ep_time = np.mean(timers)
+            episode_return = sum(rewards)/batch_size
+            episode_return_1x = episode_return
 
             if self.wwandb:
                 if text is None:
                     self.log({
-                        "Success_rate": suc_rate,
-                        "Mean_D[time]": ep_time
+                        "Success_rate": episode_return,
                     })
                 else:
                     self.log({
-                        f"Success_rate_S_{text}": suc_rate,
-                        f"Mean_D[time]_S_{text}": ep_time
+                        f"Success_rate_S_{text}": episode_return,
                     })
-            print(f"[T: {episode_timeout}] | Success rate: {suc_rate}, Mean time: {ep_time}")
+            print(f"[T: {episode_timeout}] | Success rate: {episode_return}")
+
+            # inference on corridor_length = train corridor_length * 2
+            rewards, successes = get_returns_TMaze(
+                model=self.model,
+                ret=1.0,
+                seeds=seeds_list,
+                episode_timeout=episode_timeout*2,
+                corridor_length=episode_timeout*2-2,
+                context_length=self.config["training"]["context_length"],
+                device=self.device,
+                config=self.config,
+                create_video=False,
+            )
+
+            episode_return = sum(rewards)/batch_size
+
+            if self.wwandb:
+                if text is None:
+                    self.log({
+                        "Success_rate_x2": episode_return,
+                    })
+                else:
+                    self.log({
+                        f"Success_rate_S_{text}": episode_return,
+                    })
+            if self.config["model_mode"] in ["RATE"]:
+                self.current_metric_value = episode_return
+            else:
+                self.current_metric_value = episode_return_1x
+            print(f"[T: {episode_timeout}] | [x2 length] Success rate: {episode_return}")
 
     @staticmethod
     def perform_mini_inference_vizdoom(self, episode_timeout, text=None, env=None):
@@ -90,7 +103,7 @@ class InferenceHandler(BaseTrainer):
                     returns = []
                     ts = []
                     for i in range(len(seeds)):
-                        episode_return, act_list, t, _, _, attn_map = \
+                        episode_return, t = \
                             get_returns_VizDoom(
                                 model=self.model, 
                                 ret=ret,
@@ -143,6 +156,7 @@ class InferenceHandler(BaseTrainer):
                     f"LifeTimeMean_{self.config['online_inference']['desired_return_1']}": total_ts, 
                     f"ReturnsMean_{self.config['online_inference']['desired_return_1']}": total_returns
                 })
+            self.current_metric_value = total_returns
 
     @staticmethod
     def perform_mini_inference_minigridmemory(self, episode_timeout, text=None, env=None):
@@ -150,8 +164,12 @@ class InferenceHandler(BaseTrainer):
 
         self.model.eval()
         with torch.no_grad():
-            env_name = {'type': 'Minigrid', 'name': 'MiniGrid-MemoryS13Random-v0'}
-            for LENGTH in [31, 91]:
+            if "Random_True" in self.config["data"]["path_to_dataset"]:
+                env_name = {'type': 'Minigrid', 'name': 'MiniGrid-MemoryS13Random-v0'}
+            else:
+                env_name = {'type': 'Minigrid', 'name': 'MiniGrid-MemoryS13-v0'}
+            returns_mean_41, returns_mean_91 = 0, 0
+            for LENGTH in [41, 91]:
                 seeds = np.arange(0, 100).tolist()
                 total_rew_mm = 0
                 cnt = 1
@@ -159,7 +177,7 @@ class InferenceHandler(BaseTrainer):
                     returns = []
                     ts = []
                     for i in range(len(seeds)):
-                        episode_return, act_list, t, out_states, memories, attn_maps, attn_maps_seg, frames = \
+                        episode_return, t = \
                             get_returns_MinigridMemory(
                                 length=LENGTH, 
                                 model=self.model, 
@@ -189,7 +207,16 @@ class InferenceHandler(BaseTrainer):
                         self.log({
                             f"LifeTimeMean_r_{ret}_l_{LENGTH}": lifetime_mean,
                             f"ReturnsMax_r_{ret}_l_{LENGTH}": returns_max,
-                            f"ReturnsMean_r_{ret}_l_{LENGTH}": returns_mean})
+                            f"ReturnsMean_r_{ret}_l_{LENGTH}": returns_mean
+                        })
+                if LENGTH == 41:
+                    returns_mean_41 = returns_mean
+                if LENGTH == 91:
+                    returns_mean_91 = returns_mean
+            if self.config["model_mode"] in ["RATE"]:
+                self.current_metric_value = returns_mean_41
+            else:
+                self.current_metric_value = returns_mean_91
                         
     @staticmethod
     def perform_mini_inference_memorymaze(self, episode_timeout, text=None, env=None):
@@ -233,6 +260,7 @@ class InferenceHandler(BaseTrainer):
                         f"LifeTimeMean_{ret}": lifetime_mean,
                         f"ReturnsMax_{ret}": returns_max,
                         f"ReturnsMean_{ret}": returns_mean})
+                self.current_metric_value = returns_mean
                     
     @staticmethod
     def perform_mini_inference_popgym(self, episode_timeout, text=None, env=None):
@@ -275,6 +303,7 @@ class InferenceHandler(BaseTrainer):
                         f"LifeTimeMean_{ret}": lifetime_mean,
                         f"ReturnsMax_{ret}": returns_max,
                         f"ReturnsMean_{ret}": returns_mean})
+                self.current_metric_value = returns_mean
 
         self.model.to(self.device)
 
