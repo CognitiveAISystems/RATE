@@ -615,10 +615,10 @@ if __name__ == "__main__":
                 "eval_return": eval_return,
                 "eval_length": eval_length
             })
-            # Сохраняем лучший чекпоинт
+            # Save best checkpoint
             if eval_return > best_eval_return:
                 best_eval_return = eval_return
-                # Сохраняем best_checkpoint.pth на уровень выше checkpoints
+                # Save best checkpoint
                 best_ckpt_dir = os.path.join(path_to_save)
                 best_ckpt_path = os.path.join(best_ckpt_dir, "best_checkpoint.pth")
                 torch.save({

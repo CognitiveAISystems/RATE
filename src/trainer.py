@@ -543,7 +543,7 @@ class Trainer(BaseTrainer):
             is_train = True
             self.model.train()
 
-            # Сбрасываем скрытое состояние в начале каждой эпохи
+            # Reset hidden state in the beginning of each epoch
             if hasattr(self.model, 'backbone') and self.model.backbone in ['lstm', 'gru']:
                 self.hidden = None
 
@@ -558,7 +558,7 @@ class Trainer(BaseTrainer):
                 memory = None
                 mem_tokens = None
 
-                # Сбрасываем скрытое состояние для каждого нового батча если указано в конфиге
+                # Reset hidden state for each new batch if specified in the config
                 if hasattr(self.model, 'backbone') and self.model.backbone in ['lstm', 'gru']:
                     if self.config.get("reset_hidden_state_batch", True):
                         self.hidden = self.model.reset_hidden(s.size(0), self.device)
@@ -580,7 +580,7 @@ class Trainer(BaseTrainer):
                         printed = True
 
 
-                    # напечатать индекс тензора где первый элемент не равен 0
+                    # print the index of the tensor where the first element is not equal to 0
                     # print(block_part, y1[0])
                     # print(block_part, torch.where(y1[:] != 0)[0][0].item())
 
@@ -592,7 +592,7 @@ class Trainer(BaseTrainer):
                         mem_tokens = self.raw_model.mem_tokens.repeat(1, r1.shape[0], 1)
 
                     with torch.set_grad_enabled(is_train):
-                        # Модифицируем вызов forward для поддержки LSTM
+                        # Modify forward call to support LSTM
                         if hasattr(self.model, 'backbone') and self.model.backbone in ['lstm', 'gru']:
                             res = self.model(
                                 x1, y1, r1, y1, t1,
@@ -601,11 +601,11 @@ class Trainer(BaseTrainer):
                                 masks=masks1
                             )
                             self.hidden = res.get('hidden', None)
-                            # Отсоединяем скрытое состояние от графа вычислений
+                            # Detach hidden state from the computation graph
                             if self.hidden is not None:
                                 self.hidden = tuple(h.detach() for h in self.hidden)
                         else:
-                            # Стандартный вызов для других моделей
+                            # Standard call for other models
                             res = self.model(x1, y1, r1, y1, t1, *memory, mem_tokens=mem_tokens, masks=masks1) if memory is not None \
                                 else self.model(x1, y1, r1, y1, t1, mem_tokens=mem_tokens, masks=masks1)
                         

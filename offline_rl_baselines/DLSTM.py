@@ -36,18 +36,14 @@ class DecisionLSTM(nn.Module):
         self.embed_timestep = nn.Embedding(max_ep_len, self.d_embed)
         self.backbone = backbone.lower()
         
-        # Энкодеры для разных типов входных данных
         self.state_encoder = ObsEncoder(self.env_name, state_dim, self.d_embed).obs_encoder
         self.action_embeddings = ActEncoder(self.env_name, act_dim, self.d_embed).act_encoder
         self.ret_emb = RTGEncoder(self.env_name, self.d_embed).rtg_encoder
         
-        # RNN для обработки последовательности триплетов
         self.hidden_size = hidden_layers[-1]
         
-        # Удаляем triplet_projector, вместо него будем использовать прямую конкатенацию
         self.dropout = nn.Dropout(dropout)
         
-        # Выбор рекуррентной сети на основе параметра backbone
         if self.backbone == 'lstm':
             self.backbone_net = nn.LSTM(
                 input_size=d_model,
@@ -71,10 +67,8 @@ class DecisionLSTM(nn.Module):
         
         self.output_dim = self.hidden_size * self.num_directions
         
-        # Декодер действий
         self.head = ActDecoder(self.env_name, act_dim, self.output_dim).act_decoder
         
-        # Инициализация весов RNN
         for name, param in self.backbone_net.named_parameters():
             if 'weight' in name:
                 nn.init.orthogonal_(param)
@@ -82,9 +76,7 @@ class DecisionLSTM(nn.Module):
                 nn.init.constant_(param, 0)
 
     def init_hidden(self, batch_size, device):
-        """Инициализация скрытых состояний RNN"""
         if self.backbone == 'lstm':
-            # LSTM требует два скрытых состояния (h_0 и c_0)
             h_0 = torch.zeros(
                 self.lstm_layers * self.num_directions,
                 batch_size,
@@ -103,7 +95,6 @@ class DecisionLSTM(nn.Module):
             
             return (h_0, c_0)
         else:  # GRU
-            # GRU требует только одно скрытое состояние
             h_0 = torch.zeros(
                 self.lstm_layers * self.num_directions,
                 batch_size,
@@ -154,41 +145,32 @@ class DecisionLSTM(nn.Module):
     def forward(self, states, actions=None, rtgs=None, target=None, timesteps=None, mem_tokens=None, masks=None, hidden=None, *args, **kwargs):
         B, B1, states, reshape_required = self.reshape_states(states)
         
-        # Получаем эмбеддинги состояний
         state_embeddings = self.state_encoder(states)
         if reshape_required:
             state_embeddings = state_embeddings.reshape(B, B1, self.d_embed)
         
-        # Получаем эмбеддинги ожидаемых наград
         rtg_embeddings = self.ret_emb(rtgs)
         
-        # Подготовка последовательности токенов в формате RATE
         if actions is not None:
             action_embeddings = self.encode_actions(actions)
             
-            # Формируем токены по аналогии с RATE - чередуем rtg, state, action
             token_embeddings = torch.zeros((B, B1*3 - int(target is None), self.d_embed), dtype=torch.float32, device=state_embeddings.device)
             token_embeddings[:, ::3, :] = rtg_embeddings
             token_embeddings[:, 1::3, :] = state_embeddings
             token_embeddings[:, 2::3, :] = action_embeddings[:, :B1, :]
             
         else:
-            # Если действия отсутствуют, чередуем только rtg и state
             token_embeddings = torch.zeros((B, B1*2, self.d_embed), dtype=torch.float32, device=state_embeddings.device)
             token_embeddings[:, ::2, :] = rtg_embeddings
             token_embeddings[:, 1::2, :] = state_embeddings
         
-        # Применяем дропаут
         token_embeddings = self.dropout(token_embeddings)
         
-        # Если скрытые состояния не переданы, инициализируем их
         if hidden is None:
             hidden = self.init_hidden(B, states.device)
         
-        # Обрабатываем последовательность с помощью выбранной RNN
         features, new_hidden = self.backbone_net(token_embeddings, hidden)
         
-        # Получаем предсказания действий
         logits = self.head(features)
 
         if actions is not None:
@@ -206,7 +188,6 @@ class DecisionLSTM(nn.Module):
         return output
 
     def reset_hidden(self, batch_size=None, device=None):
-        """Сброс скрытых состояний RNN"""
         if batch_size is None or device is None:
             return None
         return self.init_hidden(batch_size, device)
