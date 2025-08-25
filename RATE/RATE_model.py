@@ -291,7 +291,7 @@ class RATE(nn.Module):
 
         return B, B1, states, reshape_required
     
-    def forward(self, states, actions, rtgs, target, timesteps, *mems, mem_tokens=None, masks=None, hidden=None):
+    def forward(self, states, actions, rtgs, target, timesteps, *mems, mem_tokens=None, masks=None, hidden=None, **kwargs):
         """Forward pass through the model.
         
         Args:

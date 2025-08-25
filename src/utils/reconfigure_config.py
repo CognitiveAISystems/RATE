@@ -40,7 +40,7 @@ def add_env_specific_info_to_config(config: dict) -> dict:
     """
     if config["model"]["env_name"] == "tmaze":
         config["training"]["max_segments"] = config["max_n_final"]
-        if config["model_mode"] in ["RATE", "RMT", "TrXL"]:
+        if config["model_mode"] in ["RATE", "RMT", "TrXL", "MATL"]:
             config["online_inference"]["episode_timeout"] = \
                 config["max_n_final"] * config["training"]["context_length"]
             config["online_inference"]["corridor_length"] = \
@@ -53,7 +53,7 @@ def add_env_specific_info_to_config(config: dict) -> dict:
         # Mltiple episode timeouts for final evaluation
         # config["online_inference"]["multiple_timeouts"] = [9, 30, 60, 90, 150, 210, 270, 360, 480, 600, 750, 900]
 
-        if config["model_mode"] not in ["RATE", "RMT", "TrXL"]:
+        if config["model_mode"] not in ["RATE", "RMT", "TrXL", "MATL"]:
             config["training"]["sections"] = 1
         else:
             config["training"]["sections"] = config["max_n_final"]
@@ -202,6 +202,10 @@ def configure_model_architecture(config: dict) -> tuple[int, int]:
         config["training"]["sections"] = 1
         max_length = config["training"]["context_length"]
     
+    elif config["model_mode"] == "MATL":
+        config["model"]["memory_size"] = config["model"]["memory_size"]
+        max_length = config["training"]["sections"] * config["training"]["context_length"]
+
     if config['model']['num_mem_tokens'] == 0:
         config["model"]["mem_at_end"] = False
         

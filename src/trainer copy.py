@@ -623,7 +623,7 @@ class Trainer(BaseTrainer):
                         elif self.config["model_mode"] == "MATL":
                             res = self.model(x1, y1, r1, y1, t1,
                                 memory_states=memory_states, 
-                                pos_offset=from_idx*0-1, # TODO: remove this
+                                pos_offset=from_idx,
                                 masks=masks1
                             )
                         else:
@@ -635,7 +635,6 @@ class Trainer(BaseTrainer):
                         memory = res.get('new_mems', None)
                         mem_tokens = res.get('mem_tokens', None)
                         memory_states = res.get('memory_states', None)
-                        
 
                         # For IQL, we need to handle the case differently
                         if self.config["model_mode"] == "IQL":

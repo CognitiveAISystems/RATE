@@ -6,7 +6,11 @@ from src.utils.set_seed import set_seed, seeds_list
 
 
 @torch.no_grad()
-def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, rtgs=None, timestep=None, mem_tokens=1, saved_context=None, hidden=None):
+def sample(
+    model, x, block_size, steps, sample=False, top_k=None, actions=None, 
+    rtgs=None, timestep=None, mem_tokens=1, saved_context=None, hidden=None,
+    memory_states=None, pos_offset=0
+):
     
     model.eval()
     for k in range(steps):
@@ -16,17 +20,22 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
         rtgs = rtgs if rtgs.size(1) <= block_size else rtgs[:, -block_size:] # crop context if needed
         
         if saved_context is not None:
-            results = model(x_cond, actions, rtgs, None, timestep, *saved_context, mem_tokens=mem_tokens, hidden=hidden)
+            results = model(
+                x_cond, actions, rtgs, None, timestep, *saved_context, mem_tokens=mem_tokens, 
+                hidden=hidden, memory_states=memory_states, pos_offset=pos_offset)
         else:
-            results = model(x_cond, actions, rtgs, None, timestep, mem_tokens=mem_tokens, hidden=hidden)
+            results = model(
+                x_cond, actions, rtgs, None, timestep, mem_tokens=mem_tokens, 
+                hidden=hidden, memory_states=memory_states, pos_offset=pos_offset)
 
         logits = results['logits'][:,-1,:]
         memory = results.get('new_mems', None)
         mem_tokens = results.get('mem_tokens', None)
         hidden = results.get('hidden', None)
         attn_map = getattr(model, 'attn_map', None)
+        memory_states = results.get('memory_states', None)
         
-    return logits, mem_tokens, memory, attn_map, hidden
+    return logits, mem_tokens, memory, attn_map, hidden, memory_states
 
 def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, context_length, device, config, create_video=False):
     set_seed(42)
@@ -65,6 +74,7 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
     mem_tokens = model.mem_tokens.repeat(1, batch_size, 1).detach() if hasattr(model, 'mem_tokens') and model.mem_tokens is not None else None
     saved_context = None
     hidden = model.reset_hidden(batch_size, device) if is_lstm else None
+    memory_states = model.init_memory(batch_size, device) if config["model_mode"] == "MATL" else None
 
     for t in tqdm(range(max_ep_len), desc=f"Steps (T={max_ep_len}, corridor={corridor_length}, mode={config['model_mode']})"):
         # Prepare actions and rewards for this step
@@ -80,6 +90,7 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             if t % context_length == 0:
                 mem_tokens = new_mem_tokens
                 saved_context = new_context
+                memory_states = new_memory_states
 
         if is_lstm:
             states_to_pass = states[:, -1:, 1:]
@@ -104,10 +115,12 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             timestep=timesteps.squeeze(-1),
             mem_tokens=mem_tokens,
             saved_context=saved_context,
-            hidden=hidden
+            hidden=hidden,
+            memory_states=memory_states,
+            pos_offset=t*0-1 # TODO: remove this
         )
 
-        sampled_action, new_mem_tokens, new_context, attn_map, new_hidden = sample_outputs
+        sampled_action, new_mem_tokens, new_context, attn_map, new_hidden, new_memory_states = sample_outputs
         
         if is_lstm:
             hidden = new_hidden

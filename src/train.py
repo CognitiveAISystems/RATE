@@ -149,6 +149,20 @@ class ModelConfig:
     kernel_size: Optional[int] = None  # [5] Kernel size for convolutional layer
     convdim: Optional[int] = None  # [128] Output channel size for convolutional layer
 
+    # Parameters for MATL
+    d_ff: Optional[int] = None  # [1024] Dimension of feed-forward networks
+    memory_size: Optional[int] = None # [16] Number of memory slots
+    memory_init_std: Optional[float] = None # [0.01] Standard deviation of memory initialization
+    detach_memory: FlagConversionOff[Optional[bool]] = None # [True] Whether to detach memory gradients
+    use_causal_self_attn_mask: FlagConversionOff[Optional[bool]] = None # [True] Whether to use causal self-attention mask
+    use_lru: FlagConversionOff[Optional[bool]] = None # [True] Whether to use LRU replacement policy
+    lru_blend_alpha: Optional[float] = None # [0.99] Alpha for LRU replacement policy
+    pre_lnorm: FlagConversionOff[Optional[bool]] = None # [True] Whether to use pre-layer normalization
+    pos_type: Optional[str] = None # ["relative"] 'relative' (TrXL), 'sinusoidal' (vanilla), 'learnable'
+    train_stride: Optional[int] = None # [context_length] Stride for training
+
+
+
 @dataclass
 class OnlineInferenceConfig:
     """Configuration for online inference each ckpt_epoch during training."""
@@ -179,13 +193,15 @@ class Config:
     # Model mode
     model_mode: str = "RATE"
     # Base architecture mode (TrXL, GTrXL, TrXL-I)
-    arch_mode: str = "TrXL"
+    arch_mode: Optional[str] = None # ["TrXL"]
     # Starting seed (seed of the first model run)
     start_seed: int = 1
     # Ending seed (seed of the last model run)
     end_seed: int = 6
     # Text description (additional user-defined information of the experiment)
     text: str = ""
+    # dtype: "bfloat16", "float32", "float64"
+    dtype: str = "float32" # TODO
 
     # For T-Maze only! (specified in the .sh running scripts)
     min_n_final: Optional[int] = None
