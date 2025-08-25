@@ -80,6 +80,14 @@ class Trainer(BaseTrainer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.wwandb = config["wandb"]["wwandb"]
         
+        # Set up dtype based on config
+        dtype_map = {
+            "float32": torch.float32,
+            "float64": torch.float64,
+            "bfloat16": torch.bfloat16
+        }
+        self.dtype = dtype_map.get(config["dtype"], torch.float32)  # default to float32 if not specified
+        
         # Training state
         self.model = None
         self.optimizer = None
@@ -171,13 +179,20 @@ class Trainer(BaseTrainer):
         elif self.config["model_mode"] == "LSDT":
             self.model = LongShortDecisionTransformer(**self.config["model"])
         elif self.config["model_mode"] == "MATL":
-            self.model = MATLModel(**self.config["model"])
+            # Add dtype and sequence_format from main config to model config for MATL
+            matl_config = self.config["model"].copy()
+            matl_config["dtype"] = self.config["dtype"]
+            # Set default sequence_format if not specified
+            if matl_config.get("sequence_format") is None:
+                matl_config["sequence_format"] = "sra"
+            self.model = MATLModel(**matl_config)
         else:
             raise ValueError(f"Invalid model type: {self.config['model_mode']}")
 
         self.lr_scheduler = LearningRateScheduler(self.config, self.train_dataloader)
         
-        self.model.to(self.device)
+        # Move model to specified device and dtype
+        self.model.to(device=self.device, dtype=self.dtype)
         
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -196,6 +211,9 @@ class Trainer(BaseTrainer):
         
         
         print(f"Model parameters: {sum(p.numel() for p in list(self.model.parameters()))}")
+        print(f"Model dtype: {self.dtype}")
+        if self.config["model_mode"] == "MATL":
+            print(f"MATL sequence format: {getattr(self.model, 'sequence_format', 'sra')}")
         print("\nConfiguration:")
         print_config(self.config)
         print('\n')
@@ -269,15 +287,18 @@ class Trainer(BaseTrainer):
             labels = target.squeeze(-1)
             accuracy = torch.mean(torch.eq(ans, labels).float())
 
+            # Get label smoothing parameter
+            label_smoothing = self.config.get("model", {}).get("label_smoothing", 0.0) or 0.0
+            
             # calculate loss for the last important token
             if flag == 1:
-                criterion_last = nn.CrossEntropyLoss(ignore_index=-10)
+                criterion_last = nn.CrossEntropyLoss(ignore_index=-10, label_smoothing=label_smoothing)
                 logits_last = logits_last.reshape(-1, logits_last.shape[-1])
                 target_last = target_last.reshape(-1).long()
                 loss_last = criterion_last(logits_last, target_last)
 
             # calculate full loss for the optimization
-            criterion_all = nn.CrossEntropyLoss(ignore_index=-10, reduction='mean')
+            criterion_all = nn.CrossEntropyLoss(ignore_index=-10, reduction='mean', label_smoothing=label_smoothing)
             logits = logits.reshape(-1, logits.size(-1))
             target = target.reshape(-1).long()
             loss = criterion_all(logits, target)
@@ -294,10 +315,12 @@ class Trainer(BaseTrainer):
                 target.reshape(-1).long()
             )
         elif self.env_name == 'minigrid_memory':
+            label_smoothing = self.config.get("model", {}).get("label_smoothing", 0.0) or 0.0
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)),
                 target.reshape(-1).long(), 
-                ignore_index=-10
+                ignore_index=-10,
+                label_smoothing=label_smoothing
             )
 
         elif self.env_name == 'memory_maze':
@@ -324,10 +347,12 @@ class Trainer(BaseTrainer):
                 mask = (target.reshape(-1, 1) != -10).float()
                 loss = (loss * mask).sum() / (mask.sum() + 1e-8)
             else:
+                label_smoothing = self.config.get("model", {}).get("label_smoothing", 0.0) or 0.0
                 loss = F.cross_entropy(
                     logits.reshape(-1, logits.size(-1)),
                     target.reshape(-1).long(),
-                    ignore_index=-10
+                    ignore_index=-10,
+                    label_smoothing=label_smoothing
                 )
         elif "mikasa_robo" in self.env_name:
             loss = F.mse_loss(logits, target)
@@ -577,11 +602,11 @@ class Trainer(BaseTrainer):
                     from_idx = block_part * self.BLOCKS_CONTEXT
                     to_idx = (block_part + 1) * self.BLOCKS_CONTEXT
 
-                    x1 = s[:, from_idx:to_idx, :].to(self.device)
-                    y1 = a[:, from_idx:to_idx, :].to(self.device).float()
-                    r1 = rtg[:,:,:][:, from_idx:to_idx, :].to(self.device).float() 
-                    t1 = timesteps[:, from_idx:to_idx].to(self.device)
-                    masks1 = masks[:, from_idx:to_idx].to(self.device)
+                    x1 = s[:, from_idx:to_idx, :].to(device=self.device, dtype=self.dtype)
+                    y1 = a[:, from_idx:to_idx, :].to(device=self.device, dtype=self.dtype)
+                    r1 = rtg[:,:,:][:, from_idx:to_idx, :].to(device=self.device, dtype=self.dtype)
+                    t1 = timesteps[:, from_idx:to_idx].to(device=self.device)
+                    masks1 = masks[:, from_idx:to_idx].to(device=self.device)
 
                     if not not_b and not printed:
                         print('Input shape (obs) after segmenting: ', x1.shape)
@@ -621,9 +646,14 @@ class Trainer(BaseTrainer):
                             if self.hidden is not None:
                                 self.hidden = tuple(h.detach() for h in self.hidden)
                         elif self.config["model_mode"] == "MATL":
+                            # Calculate pos_offset based on sequence format
+                            sequence_format = getattr(self.model, 'sequence_format', 'sra')
+                            multiplier = self.model.get_sequence_length_multiplier()
+                            pos_offset_val = from_idx * multiplier
+                            
                             res = self.model(x1, y1, r1, y1, t1,
                                 memory_states=memory_states, 
-                                pos_offset=from_idx*0-1, # TODO: remove this
+                                pos_offset=pos_offset_val,
                                 masks=masks1
                             )
                         else:

@@ -62,96 +62,41 @@ class InferenceHandler(BaseTrainer):
             print(f"\n----- [T: {episode_timeout}] | Success rate: {episode_return} | ")
 
             if "multiple_timeouts" not in self.config["online_inference"]:
-                # inference on corridor_length = train corridor_length * 2
-                rewards, successes = get_returns_TMaze(
-                    model=self.model,
-                    ret=1.0,
-                    seeds=seeds_list,
-                    episode_timeout=episode_timeout*2,
-                    corridor_length=episode_timeout*2-2,
-                    context_length=self.config["training"]["context_length"],
-                    device=self.device,
-                    config=self.config,
-                    create_video=False,
-                )
+                # Define the list of multipliers to test
+                multipliers = [2, 5, 6, 7, 10, 50, 100]
+                
+                for multiplier in multipliers:
+                    # inference on corridor_length = train corridor_length * multiplier
+                    rewards, successes = get_returns_TMaze(
+                        model=self.model,
+                        ret=1.0,
+                        seeds=seeds_list,
+                        episode_timeout=episode_timeout*multiplier,
+                        corridor_length=episode_timeout*multiplier-2,
+                        context_length=self.config["training"]["context_length"],
+                        device=self.device,
+                        config=self.config,
+                        create_video=False,
+                    )
 
-                episode_return = sum(rewards)/batch_size
+                    episode_return = sum(rewards)/batch_size
 
-                if self.wwandb:
-                    if text is None:
-                        self.log({
-                            "Success_rate_x2": episode_return,
-                        })
+                    if self.wwandb:
+                        if text is None:
+                            self.log({
+                                f"Success_rate_x{multiplier}": episode_return,
+                            })
+                        else:
+                            self.log({
+                                f"Success_rate_S_{text}_x{multiplier}": episode_return,
+                            })
+                    
+                    if self.config["model_mode"] in ["RATE"]:
+                        self.current_metric_value = episode_return
                     else:
-                        self.log({
-                            f"Success_rate_S_{text}": episode_return,
-                        })
-                if self.config["model_mode"] in ["RATE"]:
-                    self.current_metric_value = episode_return
-                else:
-                    self.current_metric_value = episode_return_1x
-                print(f"----- [T: {episode_timeout*2}] | [x2 length] Success rate: {episode_return} | \n")
-
-
-                # inference on corridor_length = train corridor_length * 5
-                rewards, successes = get_returns_TMaze(
-                    model=self.model,
-                    ret=1.0,
-                    seeds=seeds_list,
-                    episode_timeout=episode_timeout*5,
-                    corridor_length=episode_timeout*5-2,
-                    context_length=self.config["training"]["context_length"],
-                    device=self.device,
-                    config=self.config,
-                    create_video=False,
-                )
-
-                episode_return = sum(rewards)/batch_size
-
-                if self.wwandb:
-                    if text is None:
-                        self.log({
-                            "Success_rate_x5": episode_return,
-                        })
-                    else:
-                        self.log({
-                            f"Success_rate_S_{text}": episode_return,
-                        })
-                if self.config["model_mode"] in ["RATE"]:
-                    self.current_metric_value = episode_return
-                else:
-                    self.current_metric_value = episode_return_1x
-                print(f"----- [T: {episode_timeout*5}] | [x5 length] Success rate: {episode_return} | \n")
-
-                # inference on corridor_length = train corridor_length * 10
-                rewards, successes = get_returns_TMaze(
-                    model=self.model,
-                    ret=1.0,
-                    seeds=seeds_list,
-                    episode_timeout=episode_timeout*10,
-                    corridor_length=episode_timeout*10-2,
-                    context_length=self.config["training"]["context_length"],
-                    device=self.device,
-                    config=self.config,
-                    create_video=False,
-                )
-
-                episode_return = sum(rewards)/batch_size
-
-                if self.wwandb:
-                    if text is None:
-                        self.log({
-                            "Success_rate_x10": episode_return,
-                        })
-                    else:
-                        self.log({
-                            f"Success_rate_S_{text}": episode_return,
-                        })
-                if self.config["model_mode"] in ["RATE"]:
-                    self.current_metric_value = episode_return
-                else:
-                    self.current_metric_value = episode_return_1x
-                print(f"----- [T: {episode_timeout*10}] | [x10 length] Success rate: {episode_return} | \n")
+                        self.current_metric_value = episode_return_1x
+                    
+                    print(f"----- [T: {episode_timeout*multiplier}] | [x{multiplier} length] Success rate: {episode_return} | \n")
 
     @staticmethod
     def perform_mini_inference_vizdoom(self, episode_timeout, text=None, env=None):

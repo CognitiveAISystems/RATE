@@ -160,7 +160,14 @@ class ModelConfig:
     pre_lnorm: FlagConversionOff[Optional[bool]] = None # [True] Whether to use pre-layer normalization
     pos_type: Optional[str] = None # ["relative"] 'relative' (TrXL), 'sinusoidal' (vanilla), 'learnable'
     train_stride: Optional[int] = None # [context_length] Stride for training
-
+    # Label smoothing for regularization (default: 0.0)
+    label_smoothing: Optional[float] = None # [0.0] Label smoothing for CrossEntropyLoss
+    # Memory dropout for long sequences (default: None, uses model dropout)
+    memory_dropout: Optional[float] = None # [None] Additional dropout for memory updates
+    # Maximum sequence length for positional encoding (default: 1000)
+    max_seq_len: Optional[int] = None # [1000] Maximum sequence length for positional encoding
+    # Sequence format for MATL (default: "sra")
+    sequence_format: Optional[str] = None # ["sra"] Format: "s" (state only), "sa" (state+action), "sra" (state+rtg+action), "sr" (state+rtg)
 
 
 @dataclass

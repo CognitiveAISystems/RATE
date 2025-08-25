@@ -57,16 +57,24 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
         state = np.concatenate((state, np.array([np.random.randint(low=-1, high=1+1)])))
         states.append(state)
     states = np.stack(states)  # (batch, channels)
-    states = torch.tensor(states).reshape(batch_size, 1, channels).to(device=device, dtype=torch.float32)
+    # Get dtype from config
+    dtype_map = {
+        "float32": torch.float32,
+        "float64": torch.float64,
+        "bfloat16": torch.bfloat16
+    }
+    dtype = dtype_map.get(config["dtype"], torch.float32)  # default to float32 if not specified
+
+    states = torch.tensor(states).reshape(batch_size, 1, channels).to(device=device, dtype=dtype)
 
     done = torch.zeros(batch_size, dtype=torch.bool, device=device)
-    rewards = torch.zeros(batch_size, device=device)
-    episode_rewards = torch.zeros(batch_size, device=device)
+    rewards = torch.zeros(batch_size, device=device, dtype=dtype)
+    episode_rewards = torch.zeros(batch_size, device=device, dtype=dtype)
     successes = 0
 
-    actions = torch.zeros((batch_size, 0, 1), device=device, dtype=torch.float32)
-    rewards_hist = torch.zeros((batch_size, 0), device=device, dtype=torch.float32)
-    target_return = torch.full((batch_size, 1, 1), ret, device=device, dtype=torch.float32)
+    actions = torch.zeros((batch_size, 0, 1), device=device, dtype=dtype)
+    rewards_hist = torch.zeros((batch_size, 0), device=device, dtype=dtype)
+    target_return = torch.full((batch_size, 1, 1), ret, device=device, dtype=dtype)
     timesteps = torch.zeros((batch_size, 1, 1), device=device, dtype=torch.long)
     
     is_lstm = hasattr(model, 'backbone') and model.backbone in ['lstm', 'gru']
@@ -78,8 +86,8 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
 
     for t in tqdm(range(max_ep_len), desc=f"Steps (T={max_ep_len}, corridor={corridor_length}, mode={config['model_mode']})"):
         # Prepare actions and rewards for this step
-        actions = torch.cat([actions, torch.zeros((batch_size, 1, 1), device=device)], dim=1)
-        rewards_hist = torch.cat([rewards_hist, torch.zeros((batch_size, 1), device=device)], dim=1)
+        actions = torch.cat([actions, torch.zeros((batch_size, 1, 1), device=device, dtype=dtype)], dim=1)
+        rewards_hist = torch.cat([rewards_hist, torch.zeros((batch_size, 1), device=device, dtype=dtype)], dim=1)
 
         if not is_lstm and actions.shape[1] > context_length:
             slice_index = -1 if config["model_mode"] not in ['DT', 'DTXL'] else 1
@@ -90,7 +98,8 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             if t % context_length == 0:
                 mem_tokens = new_mem_tokens
                 saved_context = new_context
-                memory_states = new_memory_states
+                if config["model_mode"] == "MATL":
+                    memory_states = new_memory_states
 
         if is_lstm:
             states_to_pass = states[:, -1:, 1:]
@@ -104,6 +113,20 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             if act_to_pass is not None and act_to_pass.shape[1] == 0:
                 act_to_pass = None
 
+        # For MATL we use the segment approach as during training
+        if config["model_mode"] == "MATL":
+            # Number of the current segment and position inside the segment
+            segment_idx = t // context_length
+            pos_in_segment = t % context_length
+            # pos_offset corresponds to the beginning of the current segment
+            # Get sequence format multiplier
+            sequence_format = getattr(model, 'sequence_format', 'sra')
+            multiplier = model.get_sequence_length_multiplier()
+            pos_offset_val = segment_idx * context_length * multiplier
+        else:
+            window_len = min(context_length, t + 1)
+            pos_offset_val = (t - window_len + 1) * 3
+            
         sample_outputs = sample(
             model=model,
             x=states_to_pass,
@@ -117,7 +140,7 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             saved_context=saved_context,
             hidden=hidden,
             memory_states=memory_states,
-            pos_offset=t*0-1 # TODO: remove this
+            pos_offset=pos_offset_val
         )
 
         sampled_action, new_mem_tokens, new_context, attn_map, new_hidden, new_memory_states = sample_outputs
@@ -131,7 +154,9 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
         next_states = []
         for i, env in enumerate(envs):
             if done[i]:
-                next_states.append(states[i, -1].cpu().numpy())
+                # Convert to float32 before numpy conversion (bfloat16 not supported by numpy)
+                state_np = states[i, -1].cpu().float().numpy()
+                next_states.append(state_np)
                 continue
             state, reward, d, info = env.step(int(act[i].item()))
             if t < hint_steps-1:
@@ -149,7 +174,7 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             episode_rewards[i] += reward
             done[i] = d
         next_states = np.stack(next_states)
-        next_states = torch.tensor(next_states).reshape(batch_size, 1, channels).to(device=device, dtype=torch.float32)
+        next_states = torch.tensor(next_states).reshape(batch_size, 1, channels).to(device=device, dtype=dtype)
         states = torch.cat([states, next_states], dim=1)
         rewards_hist[:, -1] = rewards
         
@@ -162,4 +187,5 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
 
     # Success: reward == 1.0
     successes = (episode_rewards == 1.0).sum().item()
-    return episode_rewards.cpu().tolist(), successes
+    # Convert to float32 before converting to list (for bfloat16 compatibility)
+    return episode_rewards.cpu().float().tolist(), successes

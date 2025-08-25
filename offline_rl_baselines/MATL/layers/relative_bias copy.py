@@ -54,19 +54,3 @@ class RelativeBias(nn.Module):
         # Lookup per‑head biases: [B, T, M, H]
         
         return self.bias(rel)
-
-    def mem_to_tok(self, mem_pos: torch.LongTensor, tok_pos: torch.LongTensor):
-        """
-        Compute bias for memory (queries) attending to tokens (keys).
-
-        Args:
-            mem_pos: [B, M] absolute positions for memory slots (queries)
-            tok_pos: [T]    absolute positions for tokens (keys)
-
-        Returns:
-            rel_bias: [B, H, M, T]
-        """
-        rel = mem_pos[:, :, None] - tok_pos[None, None, :]   # [B, M, T]
-        rel = rel.clamp(-self.max_dist + 1, self.max_dist - 1) + self.max_dist - 1
-        # bias: [B, M, T, H] -> permute to [B, H, M, T]
-        return self.bias(rel).permute(0, 3, 1, 2)

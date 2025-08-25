@@ -173,7 +173,7 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
         from envs_datasets import TMaze_data_generator, TMazeCombinedDataLoader
         TMaze_data_generator(
             max_segments=config["training"]["max_segments"],
-            multiplier=1000,
+            multiplier=1000, # 1000
             hint_steps=1, 
             desired_reward=1,
             win_only=True,
@@ -183,7 +183,7 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
         combined_dataloader = TMazeCombinedDataLoader(
             n_init=config["min_n_final"],
             n_final=config["max_n_final"],
-            multiplier=1000,
+            multiplier=1000, # 1000
             hint_steps=1,
             batch_size=config["training"]["batch_size"],
             mode="",

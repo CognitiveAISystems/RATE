@@ -1,0 +1,124 @@
+program: src/train.py
+project: MATL-TMaze-Sweep
+method: bayes
+metric:
+  name: Success_rate_x100
+  goal: maximize
+run_cap: 1000
+
+parameters:
+  training.learning-rate:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.001
+  training.lr-end-factor:
+    values: [1, 0.1, 0.01]
+  training.weight-decay:
+    values: [0.1, 0.01, 0.001, 0.0001]
+  training.batch-size:
+    values: [64, 128, 256, 512, 1024]
+  training.grad-norm-clip:
+    values: [0.5, 1.0, 3.0, 5.0]
+  training.use-cosine-decay:
+    values: [True, False]
+  training.warmup-steps:
+    values: [10_000, 30_000, 50_000, 100_000]
+  model.sequence-format:
+    values: [s, sa, sra, sr]
+  dtype:
+    values: [float32, bfloat16]
+  model.n-layer:
+    values: [2, 4, 6, 8, 10, 12]
+  model.n-head:
+    values: [2, 4, 8, 16]
+  model.dropout:
+    distribution: uniform
+    min: 0.05
+    max: 0.2
+  model.dropatt:
+    distribution: uniform
+    min: 0.05
+    max: 0.2
+  model.d-model:
+    values: [64, 128, 256, 512, 1024]
+  model.d-ff:
+    values: [128, 256, 512, 1024]
+  model.memory-size:
+    values: [4, 8, 16, 32, 64, 128, 256, 512]
+  model.memory-init-std:
+    values: [0, 0.01, 0.02, 0.001, 0.0001]
+  model.max-seq-len:
+    values: [1024, 2048, 4096, 8192, 16384]
+  model.use-causal-self-attn-mask:
+    values: [True, False]
+  model.use-lru:
+    values: [True, False]
+  model.lru-blend-alpha:
+    values: [0, 0.2, 0.5, 0.7, 0.95, 0.99, 1.0]
+  model.pre-lnorm:
+    values: [True, False]
+  model.pos-type:
+    values: [relative, sinusoidal, learnable]
+  model.memory-dropout:
+    distribution: uniform
+    min: 0.05
+    max: 0.2
+  model.label-smoothing:
+    distribution: uniform
+    min: 0.05
+    max: 0.2
+  training.epochs:
+    values: [100, 200, 300]
+  training.final-tokens:
+    values: [10_000_000, 20_000_000]
+  training.beta-1:
+    values: [0.9, 0.95, 0.99]
+  training.beta-2:
+    values: [0.95, 0.99, 0.999]
+
+  training.context-length:
+    value: 10
+  training.sections:
+    value: 3
+  max-n-final:
+    value: 3
+  wandb.project-name:
+    value: 'RATE-T-Maze-Sweep'
+  wandb.wwandb:
+    value: True
+  data.gamma:
+    value: 1.0
+  data.path-to-dataset:
+    value: None
+  data.max-length:
+    value: None
+  training.ckpt-epoch:
+    value: 10
+  training.online-inference:
+    value: True
+  training.log-last-segment-loss-only:
+    value: True
+  model.env-name:
+    value: 'tmaze'
+  model.detach-memory:
+    value: True
+  model.state-dim:
+    value: 4
+  model.act-dim:
+    value: 4
+  model.padding-idx:
+    value: -10
+  tensorboard-dir:
+    value: 'runs/TMaze/sweep/MATL'
+  model-mode:
+    value: 'MATL'
+  start-seed:
+    value: 1
+  end-seed:
+    value: 1
+  text:
+    value: 'sweep'
+  min-n-final:
+    value: 1
+  online-inference.best_checkpoint_metric:
+    value: 'Success_rate_x100'

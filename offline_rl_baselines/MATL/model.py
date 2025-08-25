@@ -53,7 +53,8 @@ class MATLLayer(nn.Module):
         max_seq_len=1000,
         memory_init_std=0.02,
         use_lru=True,
-        lru_blend_alpha=0.999
+        lru_blend_alpha=0.999,
+        memory_dropout=None
     ):
         super().__init__()
         
@@ -65,6 +66,7 @@ class MATLLayer(nn.Module):
         self.memory_init_std = memory_init_std
         self.use_lru = use_lru
         self.lru_blend_alpha = lru_blend_alpha
+        self.memory_dropout = memory_dropout if memory_dropout is not None else dropout
         
         # --- Use appropriate attention for the pos_encoding type ---
         # The self-attention mechanism must be chosen based on the positional encoding strategy.
@@ -226,17 +228,32 @@ class MATLLayer(nn.Module):
         
         # ========== Memory Track ==========
         mem_res = mem_vec
+        # # Memory cross-attention — memory learns from tokens (consistent LN)
+        # # --- compute rel-bias for write (memory as Q, tokens as K) ---
+        # # For mem→tok we need distances (mem_pos − tok_pos) = −(tok_pos − mem_pos).
+        # # Using rel_read (tok→mem), we permute and negate to obtain [B, H, M, T].
+        # rel_write = - rel_read.permute(0, 3, 2, 1)  # [B, H, M, T]
+
+        # def memory_writes_from_tokens(m_memory: torch.Tensor) -> torch.Tensor:
+        #     u_attn_local = self.cross_attention2(
+        #         m_memory,                  # Q: [B, M, D]
+        #         h.transpose(0, 1),  # K: [B, T, D]
+        #         h.transpose(0, 1),  # V: [B, T, D]
+        #         is_causal=False,
+        #         rel_bias=rel_write
+        #     )
+        #     return u_attn_local
+
         # Memory cross-attention — memory learns from tokens (consistent LN)
         # --- compute rel-bias for write (memory as Q, tokens as K) ---
-        # For mem→tok we need distances (mem_pos − tok_pos) = −(tok_pos − mem_pos).
-        # Using rel_read (tok→mem), we permute and negate to obtain [B, H, M, T].
-        rel_write = - rel_read.permute(0, 3, 2, 1)  # [B, H, M, T]
+        # For mem→tok we need distances (mem_pos − tok_pos).
+        rel_write = self.cross_rel_bias.mem_to_tok(mem_pos, tok_pos)  # [B, H, M, T]
 
         def memory_writes_from_tokens(m_memory: torch.Tensor) -> torch.Tensor:
             u_attn_local = self.cross_attention2(
                 m_memory,                  # Q: [B, M, D]
-                h.transpose(0, 1),  # K: [B, T, D]
-                h.transpose(0, 1),  # V: [B, T, D]
+                h.transpose(0, 1),        # K: [B, T, D]
+                h.transpose(0, 1),        # V: [B, T, D]
                 is_causal=False,
                 rel_bias=rel_write
             )
@@ -245,6 +262,9 @@ class MATLLayer(nn.Module):
         u = self._apply_sublayer(mem_vec, self.memory_norm_cross, memory_writes_from_tokens, self.pre_lnorm)
 
         u_processed = self.memory_ffn(u)
+        # Apply dropout to memory updates for regularization on long sequences
+        if self.training:
+            u_processed = F.dropout(u_processed, p=self.memory_dropout, training=True)
 
         
         # 1) Define empty slots
@@ -252,9 +272,7 @@ class MATLLayer(nn.Module):
         first_empty = (empty.float().cumsum(-1) == 1)        # one-hot for the first empty
 
         if self.use_lru:
-            # 2) Shift occupied slots
-            mem_pos = torch.where(~empty, mem_pos + T, mem_pos)
-
+            # print(mem_pos[0])
             # 3) If memory is fully occupied → select LRU
             all_filled = (~empty).all(dim=-1, keepdim=True)      # [B,1]
             _, lru_idx = mem_pos.min(dim=-1)                     # index of the minimum mem_pos
@@ -320,6 +338,9 @@ class MATLModel(nn.Module):
         pos_type="relative",  # Will use pos_encoding if None
         train_stride=None,  # Will use context_length if None
         padding_idx=None,
+        memory_dropout=None,  # Additional dropout for memory updates
+        dtype="float32",  # Model dtype: "float32", "float64", "bfloat16"
+        sequence_format="sra",  # Sequence format: "s", "sa", "sra", "sr"
         **kwargs
     ):
         super().__init__()
@@ -335,6 +356,20 @@ class MATLModel(nn.Module):
         self.act_dim = act_dim
         self.memory_size = memory_size
         self.padding_idx = padding_idx
+        
+        # Set up dtype
+        dtype_map = {
+            "float32": torch.float32,
+            "float64": torch.float64,
+            "bfloat16": torch.bfloat16
+        }
+        self.dtype = dtype_map.get(dtype, torch.float32)  # default to float32 if not specified
+        
+        # Set up sequence format
+        valid_formats = ["s", "sa", "sra", "sr"]
+        if sequence_format not in valid_formats:
+            raise ValueError(f"Invalid sequence_format '{sequence_format}'. Must be one of {valid_formats}")
+        self.sequence_format = sequence_format
         
         self.memory_init_std = memory_init_std
         self.detach_memory = detach_memory
@@ -371,10 +406,13 @@ class MATLModel(nn.Module):
             self.register_parameter("r_w_bias", None)
             self.register_parameter("r_r_bias", None)
         
+        # Store memory_dropout for layers
+        self.memory_dropout = memory_dropout if memory_dropout is not None else dropout
+        
         self.layers = nn.ModuleList([MATLLayer(
             d_model, d_ff, n_head, memory_size, self.pos_type, 
             dropout, dropatt, pre_lnorm, max_seq_len,
-            memory_init_std, use_lru, lru_blend_alpha
+            memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout
         ) for _ in range(self.num_layers)])
         
         self.drop = nn.Dropout(dropout)
@@ -386,6 +424,7 @@ class MATLModel(nn.Module):
             nn.init.normal_(self.r_r_bias, std=0.02)
         
     def init_memory(self, batch_size: int, device: torch.device) -> List[MemoryState]:
+        # Initialize memory with the model's dtype
         return [layer.init_memory(batch_size, device) for layer in self.layers]
     
     def encode_actions(self, actions):
@@ -421,9 +460,97 @@ class MATLModel(nn.Module):
             B, B1, _ = states.shape
         
         if reshape_required:
-            states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
+            states = states.reshape(-1, C, H, W).to(dtype=self.dtype).contiguous()
 
         return B, B1, states, reshape_required
+    
+    def get_sequence_length_multiplier(self):
+        """Get the multiplier for sequence length based on sequence format."""
+        format_multipliers = {
+            "s": 1,    # state only
+            "sa": 2,   # state + action
+            "sra": 3,  # state + rtg + action
+            "sr": 2    # state + rtg
+        }
+        return format_multipliers[self.sequence_format]
+    
+    def create_token_sequence(self, state_embeddings, action_embeddings, rtg_embeddings, target, B, B1):
+        """Create token sequence based on sequence format."""
+        multiplier = self.get_sequence_length_multiplier()
+        
+        if self.sequence_format == "s":
+            # State only: [s1, s2, s3, ...]
+            token_embeddings = torch.zeros((B, B1, self.d_embed), 
+                                         dtype=self.dtype, device=state_embeddings.device)
+            token_embeddings = state_embeddings.to(dtype=self.dtype)
+            
+        elif self.sequence_format == "sa":
+            # State + Action: [s1, a1, s2, a2, ...]
+            token_embeddings = torch.zeros((B, B1*2 - int(target is None), self.d_embed), 
+                                         dtype=self.dtype, device=state_embeddings.device)
+            token_embeddings[:, ::2, :] = state_embeddings.to(dtype=self.dtype)
+            if action_embeddings is not None:
+                token_embeddings[:, 1::2, :] = action_embeddings[:,-B1 + int(target is None):,:].to(dtype=self.dtype)
+                
+        elif self.sequence_format == "sr":
+            # State + RTG: [s1, r1, s2, r2, ...]
+            token_embeddings = torch.zeros((B, B1*2, self.d_embed), 
+                                         dtype=self.dtype, device=state_embeddings.device)
+            token_embeddings[:, ::2, :] = state_embeddings.to(dtype=self.dtype)
+            token_embeddings[:, 1::2, :] = rtg_embeddings.to(dtype=self.dtype)
+            
+        elif self.sequence_format == "sra":
+            # State + RTG + Action: [r1, s1, a1, r2, s2, a2, ...]
+            if action_embeddings is not None:
+                token_embeddings = torch.zeros((B, B1*3 - int(target is None), self.d_embed), 
+                                             dtype=self.dtype, device=state_embeddings.device)
+                token_embeddings[:, ::3, :] = rtg_embeddings.to(dtype=self.dtype)
+                token_embeddings[:, 1::3, :] = state_embeddings.to(dtype=self.dtype)
+                token_embeddings[:, 2::3, :] = action_embeddings[:,-B1 + int(target is None):,:].to(dtype=self.dtype)
+            else:
+                token_embeddings = torch.zeros((B, B1*2, self.d_embed), 
+                                             dtype=self.dtype, device=state_embeddings.device)
+                token_embeddings[:,::2,:] = rtg_embeddings.to(dtype=self.dtype)
+                token_embeddings[:,1::2,:] = state_embeddings.to(dtype=self.dtype)
+        
+        return token_embeddings
+    
+    def extract_action_predictions(self, logits, actions):
+        """Extract action predictions based on sequence format.
+        
+        Following GPT logic: predict actions from state token positions.
+        """
+        if self.sequence_format == "s":
+            # For state-only, predict actions from state positions
+            return logits
+        elif self.sequence_format == "sa":
+            # Sequence: [s1, a1, s2, a2, ...] - predict actions from state positions (0, 2, 4, ...)
+            if actions is not None:
+                return logits[:, ::2, :]   # Extract predictions from state positions
+            else:
+                # Handle edge case: if we only have states without actions (e.g., first validation step)
+                # Return predictions from state positions, but ensure we don't return empty sequence
+                if logits.size(1) > 1:
+                    return logits[:, 1:, :]    # Extract predictions after states
+                else:
+                    # Only one token (single state), predict from that token
+                    return logits
+        elif self.sequence_format == "sr":
+            # Sequence: [s1, r1, s2, r2, ...] - predict from state positions (0, 2, 4, ...)
+            return logits[:, ::2, :]  # Extract state positions
+        elif self.sequence_format == "sra":
+            # Sequence: [r1, s1, a1, r2, s2, a2, ...] - predict actions from state positions (1, 4, 7, ...)
+            if actions is not None:
+                return logits[:, 1::3, :]  # Extract predictions from state positions
+            else:
+                # Handle edge case: if we only have RTG+state without actions
+                if logits.size(1) > 1:
+                    return logits[:, 1:, :]    # Extract predictions after RTGs
+                else:
+                    # Only one token, predict from that token
+                    return logits
+        
+        return logits
     
     def forward(
         self, 
@@ -464,18 +591,15 @@ class MATLModel(nn.Module):
             state_embeddings = state_embeddings.reshape(B, B1, self.d_embed)
         rtg_embeddings = self.ret_emb(rtgs)
 
-        if actions is not None:
+        # Encode actions if needed
+        action_embeddings = None
+        if actions is not None and self.sequence_format in ["sa", "sra"]:
             action_embeddings = self.encode_actions(actions)
-            token_embeddings = torch.zeros((B, B1*3 - int(target is None), self.d_embed), 
-                                         dtype=torch.float32, device=state_embeddings.device)
-            token_embeddings[:, ::3, :] = rtg_embeddings
-            token_embeddings[:, 1::3, :] = state_embeddings
-            token_embeddings[:, 2::3, :] = action_embeddings[:,-B1 + int(target is None):,:]
-        else:
-            token_embeddings = torch.zeros((B, B1*2, self.d_embed), 
-                                         dtype=torch.float32, device=state_embeddings.device)
-            token_embeddings[:,::2,:] = rtg_embeddings
-            token_embeddings[:,1::2,:] = state_embeddings
+        
+        # Create token sequence based on format
+        token_embeddings = self.create_token_sequence(
+            state_embeddings, action_embeddings, rtg_embeddings, target, B, B1
+        )
 
         tok = token_embeddings
         bsz, seq_len = tok.size(0), tok.size(1)
@@ -511,7 +635,7 @@ class MATLModel(nn.Module):
         else:
             if self.pos_type == "learnable":
                 pos_indices = torch.arange(seq_len, device=tok.device)
-                pos_indices = torch.clamp(pos_indices, 0, 1000 - 1)
+                pos_indices = torch.clamp(pos_indices, 0, self.max_seq_len - 1)
                 pos_emb_abs = self.pos_emb(pos_indices).to(dtype=tok.dtype).unsqueeze(0)
             else:
                 pos_emb_abs = self.pos_emb(seq_len).to(tok.device, dtype=tok.dtype).unsqueeze(0)
@@ -540,10 +664,9 @@ class MATLModel(nn.Module):
         
         # Use head decoder for action prediction like in RATE
         logits = self.head(core_out)
-        if actions is not None:
-            logits = logits[:, 1::3, :]  # Extract action predictions
-        else:
-            logits = logits[:, 1:, :]    # Extract predictions after states
+        
+        # Extract action predictions based on sequence format
+        logits = self.extract_action_predictions(logits, actions)
         
         output = {
             'logits': logits,
