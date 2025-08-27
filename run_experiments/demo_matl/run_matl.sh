@@ -1,6 +1,6 @@
 #!/bin/bash
 
-
+# ogo!
 # s, sa, sra, sr
 
 # RATE
