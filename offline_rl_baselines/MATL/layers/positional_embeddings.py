@@ -137,19 +137,19 @@ class RoPEPositionalEmbedding(nn.Module):
         q_rot, k_rot = rope.apply_rotary_pos_emb(q, k, positions)
     """
     
-    def __init__(self, d_model: int, max_seq_len: int = 8192, base: float = 10000.0):
+    def __init__(self, head_dim: int, max_seq_len: int = 8192, base: float = 10000.0):
         super().__init__()
-        self.d_model = d_model
+        self.head_dim = head_dim
         self.max_seq_len = max_seq_len
         self.base = base
         
-        # Ensure d_model is even for proper rotation pairs
-        if d_model % 2 != 0:
-            raise ValueError(f"d_model must be even for RoPE, got {d_model}")
+        # Ensure head_dim is even for proper rotation pairs
+        if head_dim % 2 != 0:
+            raise ValueError(f"head_dim must be even for RoPE, got {head_dim}")
             
         # Compute inverse frequencies for rotation
-        # inv_freq shape: [d_model // 2]
-        inv_freq = 1.0 / (base ** (torch.arange(0, d_model, 2).float() / d_model))
+        # inv_freq shape: [head_dim // 2]
+        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2).float() / head_dim))
         self.register_buffer('inv_freq', inv_freq)
         
         # Precompute rotation matrices for efficiency
@@ -251,6 +251,177 @@ class RoPEPositionalEmbedding(nn.Module):
     def forward(self, seq_len: int, position_offset: int = 0, device: torch.device = None) -> torch.Tensor:
         """
         Generate position indices for RoPE (for compatibility with other position embeddings).
+        
+        Args:
+            seq_len: length of sequence
+            position_offset: offset to add to positions
+            device: device to create positions on
+            
+        Returns:
+            position indices [seq_len]
+        """
+        if device is None:
+            device = self.inv_freq.device
+            
+        positions = torch.arange(position_offset, position_offset + seq_len, device=device)
+        return positions
+
+
+class YaRNPositionalEmbedding(nn.Module):
+    """
+    YaRN (Yet another RoPE extensioN method) - Efficient Context Window Extension of Large Language Models
+    
+    Based on "YaRN: Efficient Context Window Extension of Large Language Models" (ICLR 2024)
+    
+    YaRN extends RoPE by scaling rotation frequencies:
+    - High-frequency components (i ≤ m): interpolation θ_i^new = θ_i / s
+    - Low-frequency components (i > m): extrapolation θ_i^new = θ_i / log_β(s)
+    
+    Where s = L_ext / L_train is the scaling factor.
+    
+    Args:
+        head_dim: dimension of each attention head (must be even)
+        L_train: original training sequence length (default: 2048)
+        L_ext: extended sequence length (default: 32768)
+        base: base for inverse frequency computation (default: 10000.0)
+        m: threshold dimension for interpolation/extrapolation switch (default: 128)
+        beta: extrapolation factor (default: 32.0)
+    """
+    
+    def __init__(self,
+                 head_dim: int,
+                 L_train: int = 2048,
+                 L_ext: int = 32768,
+                 base: float = 10000.0,
+                 m: int = 128,
+                 beta: float = 32.0):
+        super().__init__()
+        assert head_dim % 2 == 0, f"head_dim must be even, got {head_dim}"
+        
+        self.head_dim = head_dim
+        self.half = head_dim // 2
+        self.L_train = L_train
+        self.L_ext = L_ext
+        self.base = base
+        self.m = min(m, self.half)  # Ensure m doesn't exceed available dimensions
+        self.beta = beta
+        
+        # Compute base inverse frequencies for head_dim // 2
+        inv_freq = 1.0 / (base ** (torch.arange(0, self.half).float() / self.half))
+        
+        # Apply YaRN scaling
+        s = float(L_ext) / float(L_train)
+        scales = torch.ones_like(inv_freq)
+        
+        # Interpolation for first m dimensions (high frequencies)
+        if s <= 1.0 + 1e-6:
+            scales[:self.m] = 1.0 / max(s, 1e-12)  # Safe division for context reduction
+        else:
+            scales[:self.m] = 1.0 / s
+        
+        # Extrapolation for remaining dimensions (low frequencies)
+        if self.m < len(scales):
+            if s <= 1.0 + 1e-6:
+                scales[self.m:] = 1.0  # No scaling if s ≤ 1 (context reduction or no change)
+            else:
+                import math
+                log_beta_s = math.log(s) / math.log(beta)
+                scales[self.m:] = 1.0 / log_beta_s
+        
+        # Register scaled frequencies
+        self.register_buffer("inv_freq", inv_freq * scales)
+        
+        # Initialize cache
+        self.max_seq_len = 0
+        self.register_buffer("cos_cached", torch.empty(0), persistent=False)
+        self.register_buffer("sin_cached", torch.empty(0), persistent=False)
+    
+    def _maybe_grow_cache(self, needed_len: int, device, dtype):
+        """Grow cache if needed to accommodate longer sequences"""
+        if needed_len <= self.max_seq_len:
+            return
+        
+        # Grow cache to at least needed_len, or double current size
+        T = max(needed_len, self.max_seq_len * 2 if self.max_seq_len else needed_len)
+        
+        # Compute positions and frequencies
+        pos = torch.arange(T, device=device, dtype=torch.float32)
+        freqs = torch.outer(pos, self.inv_freq)  # [T, half]
+        
+        # Cache cos and sin
+        self.register_buffer("cos_cached", freqs.cos().to(dtype), persistent=False)
+        self.register_buffer("sin_cached", freqs.sin().to(dtype), persistent=False)
+        self.max_seq_len = T
+    
+    @staticmethod
+    def _rotate_half(x):
+        """Rotate half the hidden dims of the input"""
+        x1, x2 = x[..., :x.shape[-1]//2], x[..., x.shape[-1]//2:]
+        return torch.cat([-x2, x1], dim=-1)
+    
+    def apply_rotary_pos_emb(
+        self, 
+        q: torch.Tensor, 
+        k: torch.Tensor, 
+        positions: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply YaRN rotary position embedding to query and key tensors.
+        
+        Args:
+            q: query tensor [batch_size, seq_len, num_heads, head_dim] or [seq_len, batch_size, d_model]
+            k: key tensor [batch_size, seq_len, num_heads, head_dim] or [seq_len, batch_size, d_model]
+            positions: position indices [seq_len] (absolute positions)
+            
+        Returns:
+            tuple of (rotated_q, rotated_k)
+        """
+        # Ensure cache is large enough
+        T = int(positions.max().item()) + 1
+        self._maybe_grow_cache(T, q.device, q.dtype)
+        
+        # Get cos and sin for the given positions
+        cos = self.cos_cached[positions]  # [T, half]
+        sin = self.sin_cached[positions]  # [T, half]
+        
+        # Handle different input formats
+        if q.dim() == 4:  # [batch_size, seq_len, num_heads, head_dim]
+            # Get the actual head_dim from tensor
+            head_dim = q.shape[-1]
+            
+            # Duplicate cos/sin to match head_dim
+            cos = torch.cat([cos, cos], dim=-1)  # [T, head_dim]
+            sin = torch.cat([sin, sin], dim=-1)  # [T, head_dim]
+            
+            # Slice to actual head_dim if needed
+            cos = cos[..., :head_dim]  # [T, head_dim]
+            sin = sin[..., :head_dim]  # [T, head_dim]
+            
+            # Add dimensions for broadcasting: [1, T, 1, head_dim]
+            cos = cos.unsqueeze(0).unsqueeze(2)
+            sin = sin.unsqueeze(0).unsqueeze(2)
+            
+        else:  # [seq_len, batch_size, d_model]
+            # For this format, we expect d_model to be head_dim when called from attention
+            actual_dim = q.shape[-1]
+            
+            # Duplicate cos/sin to match actual_dim
+            cos = torch.cat([cos, cos], dim=-1)  # [T, actual_dim]
+            sin = torch.cat([sin, sin], dim=-1)  # [T, actual_dim]
+            
+            # Slice to actual dimension
+            cos = cos[..., :actual_dim].unsqueeze(1)  # [T, 1, actual_dim]
+            sin = sin[..., :actual_dim].unsqueeze(1)  # [T, 1, actual_dim]
+        
+        # Apply rotation: x * cos + rotate_half(x) * sin
+        q_rot = q * cos + self._rotate_half(q) * sin
+        k_rot = k * cos + self._rotate_half(k) * sin
+        
+        return q_rot, k_rot
+    
+    def forward(self, seq_len: int, position_offset: int = 0, device: torch.device = None) -> torch.Tensor:
+        """
+        Generate position indices for YaRN (for compatibility with other position embeddings).
         
         Args:
             seq_len: length of sequence

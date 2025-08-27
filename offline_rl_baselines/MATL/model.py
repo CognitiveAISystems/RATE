@@ -8,11 +8,13 @@ from offline_rl_baselines.MATL.layers import (
     RelPartialLearnableMultiHeadAttn, 
     MultiHeadAttention, 
     RoPEMultiHeadAttention,
+    YaRNMultiHeadAttention,
     FeedForwardNetwork,
     PositionalEmbedding,
     LearnablePositionalEmbedding,
     SinusoidalPositionalEmbedding,
     RoPEPositionalEmbedding,
+    YaRNPositionalEmbedding,
     MemoryState, RelativeBias,
     RMSNorm, get_norm_layer,
     MoEFeedForwardNetwork
@@ -99,6 +101,13 @@ class MATLLayer(nn.Module):
         elif pos_encoding == 'rope':
             # For RoPE, use RoPE-compatible MultiHeadAttention
             self.self_attention = RoPEMultiHeadAttention(
+                self.d_model, self.num_heads, dropout=dropout, attn_dropout=dropatt
+            )
+            # Add layer norm and residual connection for the self-attention block
+            self.self_attn_norm = get_norm_layer(self.norm_type, self.d_model)
+        elif pos_encoding == 'yarn':
+            # For YaRN, use YaRN-compatible MultiHeadAttention
+            self.self_attention = YaRNMultiHeadAttention(
                 self.d_model, self.num_heads, dropout=dropout, attn_dropout=dropatt
             )
             # Add layer norm and residual connection for the self-attention block
@@ -209,7 +218,7 @@ class MATLLayer(nn.Module):
         r_w_bias: Optional[torch.Tensor],
         r_r_bias: Optional[torch.Tensor],
         mask: Optional[torch.Tensor] = None,
-        rope_embeddings = None  # RoPE embeddings
+        pos_embeddings = None  # RoPE/YaRN embeddings
     ) -> Tuple[torch.Tensor, MemoryState]:
         """
         Forward pass of a single MATL layer.
@@ -253,12 +262,32 @@ class MATLLayer(nn.Module):
                     x_tokens.transpose(0, 1),
                     mask=attn_mask,
                     is_causal=True,
-                    rope_embeddings=rope_embeddings,
+                    rope_embeddings=pos_embeddings,
                     rope_positions=tok_pos  # Use absolute positions for RoPE
                 )
                 return attn_out_local.transpose(0, 1)
 
             h = self._apply_sublayer(h, self.self_attn_norm, rope_self_attn_fn, self.pre_lnorm)
+        elif self.pos_encoding == 'yarn':
+            # For YaRN, use YaRN-compatible attention
+            # Prepare mask format for YaRNMultiHeadAttention
+            attn_mask = None
+            if mask is not None:
+                attn_mask = mask.squeeze(-1) if len(mask.shape) == 3 else mask
+
+            def yarn_self_attn_fn(x_tokens: torch.Tensor) -> torch.Tensor:
+                attn_out_local = self.self_attention(
+                    x_tokens.transpose(0, 1),  # [B, T, D]
+                    x_tokens.transpose(0, 1),
+                    x_tokens.transpose(0, 1),
+                    mask=attn_mask,
+                    is_causal=True,
+                    yarn_embeddings=pos_embeddings,  # YaRN embeddings
+                    yarn_positions=tok_pos  # Use absolute positions for YaRN
+                )
+                return attn_out_local.transpose(0, 1)
+
+            h = self._apply_sublayer(h, self.self_attn_norm, yarn_self_attn_fn, self.pre_lnorm)
         else:
             # For non-relative modes, apply consistent pre/post-LN around self-attention
             # Prepare mask format for MultiHeadAttention
@@ -497,8 +526,22 @@ class MATLModel(nn.Module):
         elif self.pos_type == "rope":
             # RoPE works on head dimension, not full model dimension
             self.pos_emb = RoPEPositionalEmbedding(self.d_head, max_seq_len)
+        elif self.pos_type == "yarn":
+            # YaRN works on head dimension, following the ICLR 2024 paper
+            L_train = max_seq_len  # Original training sequence length
+            L_ext = max_seq_len * 4  # 4x context extension
+            m = min(128, self.d_head // 4) if self.d_head >= 32 else self.d_head // 2
+            
+            self.pos_emb = YaRNPositionalEmbedding(
+                head_dim=self.d_head,
+                L_train=L_train,
+                L_ext=L_ext,
+                base=10000.0,
+                m=m,
+                beta=32.0
+            )
         else:
-            raise ValueError(f"Unknown pos_encoding type: {self.pos_type}. Supported types: 'relative', 'sinusoidal', 'learnable', 'rope'")
+            raise ValueError(f"Unknown pos_encoding type: {self.pos_type}. Supported types: 'relative', 'sinusoidal', 'learnable', 'rope', 'yarn'")
         
         if self.pos_type == "relative":
             self.r_w_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head))
@@ -708,14 +751,27 @@ class MATLModel(nn.Module):
         bsz, seq_len = tok.size(0), tok.size(1)
         qlen = seq_len
 
-        # absolute positions for this window, newest first
-        tok_pos = torch.arange(
-            pos_offset + qlen - 1,
-            pos_offset - 1,
-            -1,
-            device=tok.device,
-            dtype=torch.long
-        )
+        # # absolute positions for this window, newest first # TODO: it was before
+        # tok_pos = torch.arange(
+        #     pos_offset + qlen - 1,
+        #     pos_offset - 1,
+        #     -1,
+        #     device=tok.device,
+        #     dtype=torch.long
+        # )
+        # absolute positions for this window
+        if self.pos_type in ["rope", "yarn"]:
+            # For RoPE/YaRN, use monotonically increasing absolute indices
+            tok_pos = torch.arange(pos_offset, pos_offset + qlen, device=tok.device, dtype=torch.long)
+        else:
+            # For relative attention, use newest-first order (as originally designed)
+            tok_pos = torch.arange(
+                pos_offset + qlen - 1,
+                pos_offset - 1,
+                -1,
+                device=tok.device,
+                dtype=torch.long
+            )
 
         # Create causal mask for current tokens if enabled
         attn_mask = None
@@ -727,7 +783,7 @@ class MATLModel(nn.Module):
                 attn_mask = attn_mask.unsqueeze(-1)  # [qlen, qlen, 1]
         
         pos_emb = None
-        rope_embeddings = None
+        pos_embeddings = None  # For RoPE/YaRN embeddings
         if self.pos_type == "relative":
             tok = tok.transpose(0, 1)  # [T,B,D] - seq_first format
             
@@ -739,7 +795,12 @@ class MATLModel(nn.Module):
         elif self.pos_type == "rope":
             # For RoPE, don't add positional embeddings to tokens
             # Pass RoPE embeddings to attention layers instead
-            rope_embeddings = self.pos_emb
+            pos_embeddings = self.pos_emb
+            core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
+        elif self.pos_type == "yarn":
+            # For YaRN, don't add positional embeddings to tokens
+            # Pass YaRN embeddings to attention layers instead
+            pos_embeddings = self.pos_emb
             core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
         else:
             if self.pos_type == "learnable":
@@ -768,7 +829,7 @@ class MATLModel(nn.Module):
                 self.r_w_bias,
                 self.r_r_bias,
                 attn_mask,
-                rope_embeddings       # RoPE embeddings for attention
+                pos_embeddings        # RoPE/YaRN embeddings for attention
             )
             updated_memory_states.append(updated_mem)
             
