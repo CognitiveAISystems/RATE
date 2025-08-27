@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import Tuple
 
 
 class PositionalEmbedding(nn.Module):
@@ -117,3 +118,150 @@ class SinusoidalPositionalEmbedding(nn.Module):
             pe[:, cos_indices] = torch.cos(positions.unsqueeze(1) * div_term[:len(cos_indices)])
         
         return pe
+
+
+class RoPEPositionalEmbedding(nn.Module):
+    """
+    Rotary Position Embedding (RoPE) from "RoFormer: Enhanced Transformer with Rotary Position Embedding"
+    
+    RoPE applies rotation to query and key embeddings based on their absolute positions,
+    which naturally encodes relative position information in the attention mechanism.
+    
+    Args:
+        d_model: model dimension (must be even for proper rotation pairs)
+        max_seq_len: maximum sequence length to precompute rotations for
+        base: base for inverse frequency computation (default: 10000)
+        
+    Usage:
+        rope = RoPEPositionalEmbedding(d_model=128)
+        q_rot, k_rot = rope.apply_rotary_pos_emb(q, k, positions)
+    """
+    
+    def __init__(self, d_model: int, max_seq_len: int = 8192, base: float = 10000.0):
+        super().__init__()
+        self.d_model = d_model
+        self.max_seq_len = max_seq_len
+        self.base = base
+        
+        # Ensure d_model is even for proper rotation pairs
+        if d_model % 2 != 0:
+            raise ValueError(f"d_model must be even for RoPE, got {d_model}")
+            
+        # Compute inverse frequencies for rotation
+        # inv_freq shape: [d_model // 2]
+        inv_freq = 1.0 / (base ** (torch.arange(0, d_model, 2).float() / d_model))
+        self.register_buffer('inv_freq', inv_freq)
+        
+        # Precompute rotation matrices for efficiency
+        self._precompute_rotations(max_seq_len)
+    
+    def _precompute_rotations(self, max_seq_len: int):
+        """Precompute cos and sin values for all positions up to max_seq_len"""
+        # positions shape: [max_seq_len]
+        positions = torch.arange(max_seq_len, dtype=torch.float)
+        
+        # freqs shape: [max_seq_len, d_model // 2]
+        freqs = torch.outer(positions, self.inv_freq)
+        
+        # emb shape: [max_seq_len, d_model // 2]
+        emb = torch.cat((freqs, freqs), dim=-1)
+        
+        # cos_cached, sin_cached shape: [max_seq_len, d_model]
+        self.register_buffer('cos_cached', emb.cos())
+        self.register_buffer('sin_cached', emb.sin())
+    
+    def _rotate_half(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Rotate half the hidden dims of the input.
+        
+        Args:
+            x: input tensor [..., dim]
+            
+        Returns:
+            rotated tensor [..., dim]
+        """
+        dim = x.shape[-1]
+        x1, x2 = x[..., : dim // 2], x[..., dim // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+    
+    def apply_rotary_pos_emb(
+        self, 
+        q: torch.Tensor, 
+        k: torch.Tensor, 
+        positions: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply rotary position embedding to query and key tensors.
+        
+        Args:
+            q: query tensor [batch_size, seq_len, num_heads, head_dim] or [seq_len, batch_size, d_model]
+            k: key tensor [batch_size, seq_len, num_heads, head_dim] or [seq_len, batch_size, d_model]
+            positions: position indices [seq_len] (absolute positions)
+            
+        Returns:
+            tuple of (rotated_q, rotated_k)
+        """
+        # Handle different input formats
+        if q.dim() == 4:  # [batch_size, seq_len, num_heads, head_dim]
+            batch_size, seq_len, num_heads, head_dim = q.shape
+            # Reshape to [seq_len, batch_size * num_heads, head_dim] for processing
+            q_flat = q.transpose(0, 1).reshape(seq_len, batch_size * num_heads, head_dim)
+            k_flat = k.transpose(0, 1).reshape(seq_len, batch_size * num_heads, head_dim)
+            reshape_back = True
+        else:  # [seq_len, batch_size, d_model]
+            seq_len, batch_size, d_model = q.shape
+            q_flat = q
+            k_flat = k
+            reshape_back = False
+        
+        # Check if we need to extend the cache # TODO: if problems with cache
+        max_pos = positions.max().item()
+        if max_pos >= self.cos_cached.size(0):
+            # Extend the cache to accommodate larger positions
+            new_max_seq_len = max(max_pos + 1, self.max_seq_len * 2)
+            self._precompute_rotations(new_max_seq_len)
+            self.max_seq_len = new_max_seq_len
+        
+        # Get cos and sin for the given positions
+        # positions: [seq_len], cos/sin: [seq_len, d_model]
+        cos = self.cos_cached[positions]  # [seq_len, d_model]
+        sin = self.sin_cached[positions]  # [seq_len, d_model]
+        
+        # For head dimension, we need to match the actual dimension being used
+        if reshape_back:  # Working with head_dim
+            actual_dim = q_flat.shape[-1]  # head_dim
+            cos = cos[..., :actual_dim]  # [seq_len, head_dim]
+            sin = sin[..., :actual_dim]  # [seq_len, head_dim]
+        
+        # Expand for batch dimension: [seq_len, 1, actual_dim]
+        cos = cos.unsqueeze(1)
+        sin = sin.unsqueeze(1)
+        
+        # Apply rotation: x * cos + rotate_half(x) * sin
+        q_embed = (q_flat * cos) + (self._rotate_half(q_flat) * sin)
+        k_embed = (k_flat * cos) + (self._rotate_half(k_flat) * sin)
+        
+        # Reshape back if needed
+        if reshape_back:
+            q_embed = q_embed.reshape(seq_len, batch_size, num_heads, head_dim).transpose(0, 1)
+            k_embed = k_embed.reshape(seq_len, batch_size, num_heads, head_dim).transpose(0, 1)
+        
+        return q_embed, k_embed
+    
+    def forward(self, seq_len: int, position_offset: int = 0, device: torch.device = None) -> torch.Tensor:
+        """
+        Generate position indices for RoPE (for compatibility with other position embeddings).
+        
+        Args:
+            seq_len: length of sequence
+            position_offset: offset to add to positions
+            device: device to create positions on
+            
+        Returns:
+            position indices [seq_len]
+        """
+        if device is None:
+            device = self.inv_freq.device
+            
+        positions = torch.arange(position_offset, position_offset + seq_len, device=device)
+        return positions

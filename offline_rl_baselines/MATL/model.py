@@ -7,10 +7,12 @@ from typing import Tuple, Optional, List
 from offline_rl_baselines.MATL.layers import (
     RelPartialLearnableMultiHeadAttn, 
     MultiHeadAttention, 
+    RoPEMultiHeadAttention,
     FeedForwardNetwork,
     PositionalEmbedding,
     LearnablePositionalEmbedding,
     SinusoidalPositionalEmbedding,
+    RoPEPositionalEmbedding,
     MemoryState, RelativeBias,
     RMSNorm, get_norm_layer,
     MoEFeedForwardNetwork
@@ -94,6 +96,13 @@ class MATLLayer(nn.Module):
                 self.d_model, self.num_heads, dropout, 
                 dropatt=dropatt, pre_lnorm=pre_lnorm, norm_type=self.norm_type
             )
+        elif pos_encoding == 'rope':
+            # For RoPE, use RoPE-compatible MultiHeadAttention
+            self.self_attention = RoPEMultiHeadAttention(
+                self.d_model, self.num_heads, dropout=dropout, attn_dropout=dropatt
+            )
+            # Add layer norm and residual connection for the self-attention block
+            self.self_attn_norm = get_norm_layer(self.norm_type, self.d_model)
         else:
             # For 'sinusoidal' or 'learnable' embeddings, use standard MultiHeadAttention
             self.self_attention = MultiHeadAttention(
@@ -199,7 +208,8 @@ class MATLLayer(nn.Module):
         pos_emb: Optional[torch.Tensor],    # [T, 1, D]
         r_w_bias: Optional[torch.Tensor],
         r_r_bias: Optional[torch.Tensor],
-        mask: Optional[torch.Tensor] = None
+        mask: Optional[torch.Tensor] = None,
+        rope_embeddings = None  # RoPE embeddings
     ) -> Tuple[torch.Tensor, MemoryState]:
         """
         Forward pass of a single MATL layer.
@@ -229,6 +239,26 @@ class MATLLayer(nn.Module):
             # CRITICAL FIX: For relative attention, pass None as mems since MATL doesn't use memory concatenation
             # Memory interacts through separate cross-attention mechanisms, not through mems parameter
             h = self.self_attention(h, pos_emb, r_w_bias, r_r_bias, attn_mask=mask, mems=None)
+        elif self.pos_encoding == 'rope':
+            # For RoPE, use RoPE-compatible attention
+            # Prepare mask format for RoPEMultiHeadAttention
+            attn_mask = None
+            if mask is not None:
+                attn_mask = mask.squeeze(-1) if len(mask.shape) == 3 else mask
+
+            def rope_self_attn_fn(x_tokens: torch.Tensor) -> torch.Tensor:
+                attn_out_local = self.self_attention(
+                    x_tokens.transpose(0, 1),  # [B, T, D]
+                    x_tokens.transpose(0, 1),
+                    x_tokens.transpose(0, 1),
+                    mask=attn_mask,
+                    is_causal=True,
+                    rope_embeddings=rope_embeddings,
+                    rope_positions=tok_pos  # Use absolute positions for RoPE
+                )
+                return attn_out_local.transpose(0, 1)
+
+            h = self._apply_sublayer(h, self.self_attn_norm, rope_self_attn_fn, self.pre_lnorm)
         else:
             # For non-relative modes, apply consistent pre/post-LN around self-attention
             # Prepare mask format for MultiHeadAttention
@@ -464,8 +494,11 @@ class MATLModel(nn.Module):
             self.pos_emb = SinusoidalPositionalEmbedding(self.d_model)
         elif self.pos_type == "learnable":
             self.pos_emb = LearnablePositionalEmbedding(max_seq_len, self.d_model)
+        elif self.pos_type == "rope":
+            # RoPE works on head dimension, not full model dimension
+            self.pos_emb = RoPEPositionalEmbedding(self.d_head, max_seq_len)
         else:
-            raise ValueError(f"Unknown pos_encoding type: {self.pos_type}")
+            raise ValueError(f"Unknown pos_encoding type: {self.pos_type}. Supported types: 'relative', 'sinusoidal', 'learnable', 'rope'")
         
         if self.pos_type == "relative":
             self.r_w_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head))
@@ -507,7 +540,7 @@ class MATLModel(nn.Module):
             actions = actions.to(dtype=torch.long, device=actions.device)
             actions = torch.where(
                 actions == self.padding_idx,
-                torch.tensor(self.act_dim),
+                torch.tensor(self.act_dim, device=actions.device),
                 actions,
             )
             action_embeddings = self.action_embeddings(actions).squeeze(2)
@@ -694,6 +727,7 @@ class MATLModel(nn.Module):
                 attn_mask = attn_mask.unsqueeze(-1)  # [qlen, qlen, 1]
         
         pos_emb = None
+        rope_embeddings = None
         if self.pos_type == "relative":
             tok = tok.transpose(0, 1)  # [T,B,D] - seq_first format
             
@@ -702,6 +736,11 @@ class MATLModel(nn.Module):
             pos_emb = self.pos_emb(pos_seq).to(dtype=tok.dtype)  # [qlen, 1, D]
             core_out = self.drop(tok)
             pos_emb = self.drop(pos_emb)
+        elif self.pos_type == "rope":
+            # For RoPE, don't add positional embeddings to tokens
+            # Pass RoPE embeddings to attention layers instead
+            rope_embeddings = self.pos_emb
+            core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
         else:
             if self.pos_type == "learnable":
                 pos_indices = torch.arange(seq_len, device=tok.device)
@@ -728,7 +767,8 @@ class MATLModel(nn.Module):
                 pos_emb,              # [T,1,D] for self-attn
                 self.r_w_bias,
                 self.r_r_bias,
-                attn_mask
+                attn_mask,
+                rope_embeddings       # RoPE embeddings for attention
             )
             updated_memory_states.append(updated_mem)
             

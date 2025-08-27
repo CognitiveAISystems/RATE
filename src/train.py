@@ -158,7 +158,7 @@ class ModelConfig:
     use_lru: FlagConversionOff[Optional[bool]] = None # [True] Whether to use LRU replacement policy
     lru_blend_alpha: Optional[float] = None # [0.99] Alpha for LRU replacement policy. 0.0 means no blending, 1.0 means full replacement.
     pre_lnorm: FlagConversionOff[Optional[bool]] = None # [True] Whether to use pre-layer normalization
-    pos_type: Optional[str] = None # ["relative"] 'relative' (TrXL), 'sinusoidal' (vanilla), 'learnable'
+    pos_type: Optional[str] = None # ["relative"] 'relative' (TrXL), 'sinusoidal' (vanilla), 'learnable', 'rope' (Rotary Position Embedding)
     train_stride: Optional[int] = None # [context_length] Stride for training
     # Label smoothing for regularization (default: 0.0)
     label_smoothing: Optional[float] = None # [0.0] Label smoothing for CrossEntropyLoss
