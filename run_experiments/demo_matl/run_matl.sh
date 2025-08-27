@@ -43,27 +43,27 @@ python3 src/train.py \
     --model.state-dim=4 \
     --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=MATL \
+    --text=ffn+gelu \
     --training.batch-size=512 \
-    --training.beta-1=0.95\
+    --training.beta-1=0.95 \
     --training.beta-2=0.99 \
-    --training.ckpt-epoch=5 \
-    --training.epochs=100 \
+    --training.ckpt-epoch=50 \
+    --training.epochs=500 \
     --training.final-tokens=10000000 \
     --training.grad-norm-clip=1 \
     --training.learning-rate=0.0001 \
     --training.log-last-segment-loss-only=True \
-    --training.lr-end-factor=0.01 \
+    --training.lr-end-factor=1 \
     --training.online-inference=True \
     --training.use-cosine-decay=False \
     --training.warmup-steps=10000 \
     --training.weight-decay=0.01 \
     --wandb.project-name=MATL-T-Maze \
     --wandb.wwandb=True \
-    --model.use-moe=True \
+    --model.use-moe=False \
     --model.num-experts=8 \
     --model.top-k=2 \
-    --model.use-swiglu=True \
+    --model.use-swiglu=False \
     --model.load-balancing-loss-coef=0.01
 
 # Alternative configurations:
