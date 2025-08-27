@@ -5,7 +5,7 @@
 
 # RATE
 python3 src/train.py \
-    --model.norm-type=layer \
+    --model.norm-type=rmsnorm \
     --start-seed=1 \
     --end-seed=1 \
     --dtype=float32 \

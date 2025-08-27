@@ -156,7 +156,7 @@ class ModelConfig:
     detach_memory: FlagConversionOff[Optional[bool]] = None # [True] Whether to detach memory gradients
     use_causal_self_attn_mask: FlagConversionOff[Optional[bool]] = None # [True] Whether to use causal self-attention mask
     use_lru: FlagConversionOff[Optional[bool]] = None # [True] Whether to use LRU replacement policy
-    lru_blend_alpha: Optional[float] = None # [0.99] Alpha for LRU replacement policy
+    lru_blend_alpha: Optional[float] = None # [0.99] Alpha for LRU replacement policy. 0.0 means no blending, 1.0 means full replacement.
     pre_lnorm: FlagConversionOff[Optional[bool]] = None # [True] Whether to use pre-layer normalization
     pos_type: Optional[str] = None # ["relative"] 'relative' (TrXL), 'sinusoidal' (vanilla), 'learnable'
     train_stride: Optional[int] = None # [context_length] Stride for training

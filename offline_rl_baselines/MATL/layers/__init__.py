@@ -4,6 +4,7 @@ from .feed_forward_network import FeedForwardNetwork
 from .positional_embeddings import PositionalEmbedding, LearnablePositionalEmbedding, SinusoidalPositionalEmbedding
 from .memory import MemoryState
 from .relative_bias import RelativeBias
+from .normalization import RMSNorm, get_norm_layer
 
 __all__ = [
     'RelPartialLearnableMultiHeadAttn',
@@ -13,5 +14,7 @@ __all__ = [
     'LearnablePositionalEmbedding',
     'SinusoidalPositionalEmbedding',
     'MemoryState',
-    'RelativeBias'
+    'RelativeBias',
+    'RMSNorm',
+    'get_norm_layer'
 ]

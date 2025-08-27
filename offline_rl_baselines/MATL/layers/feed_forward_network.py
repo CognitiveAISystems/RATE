@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+from .normalization import get_norm_layer
 
 class FeedForwardNetwork(nn.Module):
     """Position-wise feed-forward network"""
     
-    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1, pre_lnorm: bool = True):
+    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1, pre_lnorm: bool = True, norm_type=None):
         super().__init__()
         self.pre_lnorm = pre_lnorm
         
@@ -16,7 +17,7 @@ class FeedForwardNetwork(nn.Module):
             nn.Dropout(dropout),
         )
         
-        self.layer_norm = nn.LayerNorm(d_model)
+        self.layer_norm = get_norm_layer(norm_type, d_model)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.pre_lnorm:

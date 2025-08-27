@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .normalization import get_norm_layer
 
 
 class RelPartialLearnableMultiHeadAttn(nn.Module):
@@ -8,7 +9,7 @@ class RelPartialLearnableMultiHeadAttn(nn.Module):
     Relative Partial Learnable Multi-Head Attention from Transformer-XL
     """
     
-    def __init__(self, d_model: int, n_head: int, dropout: float = 0.1, dropatt: float = 0.0, pre_lnorm: bool = True):
+    def __init__(self, d_model: int, n_head: int, dropout: float = 0.1, dropatt: float = 0.0, pre_lnorm: bool = True, norm_type=None):
         super().__init__()
         
         self.n_head = n_head
@@ -23,7 +24,7 @@ class RelPartialLearnableMultiHeadAttn(nn.Module):
         self.dropatt = nn.Dropout(dropatt)
         self.o_net = nn.Linear(n_head * self.d_head, d_model, bias=False)
         
-        self.layer_norm = nn.LayerNorm(d_model)
+        self.layer_norm = get_norm_layer(norm_type, d_model)
         self.scale = 1 / (self.d_head ** 0.5)
         
     def _rel_shift(self, x, zero_triu=False):

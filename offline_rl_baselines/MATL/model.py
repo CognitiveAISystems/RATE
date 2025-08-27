@@ -11,7 +11,8 @@ from offline_rl_baselines.MATL.layers import (
     PositionalEmbedding,
     LearnablePositionalEmbedding,
     SinusoidalPositionalEmbedding,
-    MemoryState, RelativeBias
+    MemoryState, RelativeBias,
+    RMSNorm, get_norm_layer
 )
 from RATE.env_encoders import ObsEncoder, ActEncoder, RTGEncoder, ActDecoder
 
@@ -54,7 +55,8 @@ class MATLLayer(nn.Module):
         memory_init_std=0.02,
         use_lru=True,
         lru_blend_alpha=0.999,
-        memory_dropout=None
+        memory_dropout=None,
+        norm_type=None
     ):
         super().__init__()
         
@@ -67,6 +69,7 @@ class MATLLayer(nn.Module):
         self.use_lru = use_lru
         self.lru_blend_alpha = lru_blend_alpha
         self.memory_dropout = memory_dropout if memory_dropout is not None else dropout
+        self.norm_type = norm_type
         
         # --- Use appropriate attention for the pos_encoding type ---
         # The self-attention mechanism must be chosen based on the positional encoding strategy.
@@ -74,7 +77,7 @@ class MATLLayer(nn.Module):
         if pos_encoding == 'relative':
             self.self_attention = RelPartialLearnableMultiHeadAttn(
                 self.d_model, self.num_heads, dropout, 
-                dropatt=dropatt, pre_lnorm=pre_lnorm
+                dropatt=dropatt, pre_lnorm=pre_lnorm, norm_type=self.norm_type
             )
         else:
             # For 'sinusoidal' or 'learnable' embeddings, use standard MultiHeadAttention
@@ -83,7 +86,7 @@ class MATLLayer(nn.Module):
             )
             # Add layer norm and residual connection for the self-attention block
             # when not using the built-in ones from RelPartialLearnableMultiHeadAttn
-            self.self_attn_norm = nn.LayerNorm(self.d_model)
+            self.self_attn_norm = get_norm_layer(self.norm_type, self.d_model)
 
         # Multi-head attention modules for memory interaction are always standard
         # Cross-attention 1: tokens read from memory
@@ -99,19 +102,19 @@ class MATLLayer(nn.Module):
         self.cross_rel_bias = RelativeBias(self.num_heads, max_seq_len)
         
         # Feed-forward networks
-        self.token_ffn = FeedForwardNetwork(self.d_model, d_ff, dropout, pre_lnorm=pre_lnorm)
-        self.memory_ffn = FeedForwardNetwork(self.d_model, d_ff, dropout, pre_lnorm=pre_lnorm)
+        self.token_ffn = FeedForwardNetwork(self.d_model, d_ff, dropout, pre_lnorm=pre_lnorm, norm_type=self.norm_type)
+        self.memory_ffn = FeedForwardNetwork(self.d_model, d_ff, dropout, pre_lnorm=pre_lnorm, norm_type=self.norm_type)
         
         # Layer normalization
-        self.token_norm_cross = nn.LayerNorm(self.d_model)
-        self.memory_norm_cross = nn.LayerNorm(self.d_model)
+        self.token_norm_cross = get_norm_layer(self.norm_type, self.d_model)
+        self.memory_norm_cross = get_norm_layer(self.norm_type, self.d_model)
         
 
         
         # Initialize parameters
         self._init_parameters()
 
-    def _apply_sublayer(self, x: torch.Tensor, norm: nn.LayerNorm, fn, pre_lnorm: bool) -> torch.Tensor:
+    def _apply_sublayer(self, x: torch.Tensor, norm: nn.Module, fn, pre_lnorm: bool) -> torch.Tensor:
         """Apply a sublayer with consistent Pre-LN/Post-LN behavior.
 
         If pre_lnorm is True: y = x + fn(norm(x))
@@ -135,7 +138,7 @@ class MATLLayer(nn.Module):
                     nn.init.xavier_uniform_(param)
                 elif 'bias' in name:
                     nn.init.zeros_(param)
-                # LayerNorm parameters are left with their default initialization (weight=1, bias=0)
+                # LayerNorm and RMSNorm parameters are left with their default initialization (weight=1, bias=0 for LayerNorm)
     
 
     def init_memory(self, batch_size: int, device: torch.device) -> MemoryState:
@@ -341,6 +344,7 @@ class MATLModel(nn.Module):
         memory_dropout=None,  # Additional dropout for memory updates
         dtype="float32",  # Model dtype: "float32", "float64", "bfloat16"
         sequence_format="sra",  # Sequence format: "s", "sa", "sra", "sr"
+        norm_type=None,  # Normalization type: "layer", "rmsnorm", or None (defaults to LayerNorm)
         **kwargs
     ):
         super().__init__()
@@ -356,6 +360,7 @@ class MATLModel(nn.Module):
         self.act_dim = act_dim
         self.memory_size = memory_size
         self.padding_idx = padding_idx
+        self.norm_type = norm_type
         
         # Set up dtype
         dtype_map = {
@@ -412,7 +417,8 @@ class MATLModel(nn.Module):
         self.layers = nn.ModuleList([MATLLayer(
             d_model, d_ff, n_head, memory_size, self.pos_type, 
             dropout, dropatt, pre_lnorm, max_seq_len,
-            memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout
+            memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout,
+            self.norm_type
         ) for _ in range(self.num_layers)])
         
         self.drop = nn.Dropout(dropout)
