@@ -1,7 +1,7 @@
 from .rel_partial_learnable_multihead_attn import RelPartialLearnableMultiHeadAttn
-from .multi_head_attention import MultiHeadAttention, RoPEMultiHeadAttention, YaRNMultiHeadAttention
+from .multi_head_attention import MultiHeadAttention, RoPEMultiHeadAttention, YaRNMultiHeadAttention, ALiBiMultiHeadAttention
 from .feed_forward_network import FeedForwardNetwork
-from .positional_embeddings import PositionalEmbedding, LearnablePositionalEmbedding, SinusoidalPositionalEmbedding, RoPEPositionalEmbedding, YaRNPositionalEmbedding
+from .positional_embeddings import PositionalEmbedding, LearnablePositionalEmbedding, SinusoidalPositionalEmbedding, RoPEPositionalEmbedding, YaRNPositionalEmbedding, ALiBiPositionalEmbedding
 from .memory import MemoryState
 from .relative_bias import RelativeBias
 from .normalization import RMSNorm, get_norm_layer
@@ -12,12 +12,14 @@ __all__ = [
     'MultiHeadAttention', 
     'RoPEMultiHeadAttention',
     'YaRNMultiHeadAttention',
+    'ALiBiMultiHeadAttention', # Added for ALiBi
     'FeedForwardNetwork',
     'PositionalEmbedding',
     'LearnablePositionalEmbedding',
     'SinusoidalPositionalEmbedding',
     'RoPEPositionalEmbedding',
     'YaRNPositionalEmbedding',
+    'ALiBiPositionalEmbedding', # Added for ALiBi
     'MemoryState',
     'RelativeBias',
     'RMSNorm',

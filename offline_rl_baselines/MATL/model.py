@@ -9,12 +9,14 @@ from offline_rl_baselines.MATL.layers import (
     MultiHeadAttention, 
     RoPEMultiHeadAttention,
     YaRNMultiHeadAttention,
+    ALiBiMultiHeadAttention,
     FeedForwardNetwork,
     PositionalEmbedding,
     LearnablePositionalEmbedding,
     SinusoidalPositionalEmbedding,
     RoPEPositionalEmbedding,
     YaRNPositionalEmbedding,
+    ALiBiPositionalEmbedding,
     MemoryState, RelativeBias,
     RMSNorm, get_norm_layer,
     MoEFeedForwardNetwork
@@ -108,6 +110,13 @@ class MATLLayer(nn.Module):
         elif pos_encoding == 'yarn':
             # For YaRN, use YaRN-compatible MultiHeadAttention
             self.self_attention = YaRNMultiHeadAttention(
+                self.d_model, self.num_heads, dropout=dropout, attn_dropout=dropatt
+            )
+            # Add layer norm and residual connection for the self-attention block
+            self.self_attn_norm = get_norm_layer(self.norm_type, self.d_model)
+        elif pos_encoding == 'alibi':
+            # For ALiBi, use ALiBi-compatible MultiHeadAttention
+            self.self_attention = ALiBiMultiHeadAttention(
                 self.d_model, self.num_heads, dropout=dropout, attn_dropout=dropatt
             )
             # Add layer norm and residual connection for the self-attention block
@@ -288,6 +297,25 @@ class MATLLayer(nn.Module):
                 return attn_out_local.transpose(0, 1)
 
             h = self._apply_sublayer(h, self.self_attn_norm, yarn_self_attn_fn, self.pre_lnorm)
+        elif self.pos_encoding == 'alibi':
+            # For ALiBi, use ALiBi-compatible attention
+            # Prepare mask format for ALiBiMultiHeadAttention
+            attn_mask = None
+            if mask is not None:
+                attn_mask = mask.squeeze(-1) if len(mask.shape) == 3 else mask
+
+            def alibi_self_attn_fn(x_tokens: torch.Tensor) -> torch.Tensor:
+                attn_out_local = self.self_attention(
+                    x_tokens.transpose(0, 1),  # [B, T, D]
+                    x_tokens.transpose(0, 1),
+                    x_tokens.transpose(0, 1),
+                    mask=attn_mask,
+                    is_causal=True,
+                    alibi_embeddings=pos_embeddings  # ALiBi embeddings
+                )
+                return attn_out_local.transpose(0, 1)
+
+            h = self._apply_sublayer(h, self.self_attn_norm, alibi_self_attn_fn, self.pre_lnorm)
         else:
             # For non-relative modes, apply consistent pre/post-LN around self-attention
             # Prepare mask format for MultiHeadAttention
@@ -540,8 +568,11 @@ class MATLModel(nn.Module):
                 m=m,
                 beta=32.0
             )
+        elif self.pos_type == "alibi":
+            # ALiBi works with attention heads, not model dimension
+            self.pos_emb = ALiBiPositionalEmbedding(self.num_heads)
         else:
-            raise ValueError(f"Unknown pos_encoding type: {self.pos_type}. Supported types: 'relative', 'sinusoidal', 'learnable', 'rope', 'yarn'")
+            raise ValueError(f"Unknown pos_encoding type: {self.pos_type}. Supported types: 'relative', 'sinusoidal', 'learnable', 'rope', 'yarn', 'alibi'")
         
         if self.pos_type == "relative":
             self.r_w_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head))
@@ -800,6 +831,11 @@ class MATLModel(nn.Module):
         elif self.pos_type == "yarn":
             # For YaRN, don't add positional embeddings to tokens
             # Pass YaRN embeddings to attention layers instead
+            pos_embeddings = self.pos_emb
+            core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
+        elif self.pos_type == "alibi":
+            # For ALiBi, don't add positional embeddings to tokens
+            # Pass ALiBi embeddings to attention layers instead
             pos_embeddings = self.pos_emb
             core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
         else:

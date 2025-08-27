@@ -26,7 +26,7 @@ python3 src/train.py \
     --model.use-lru=False \
     --model.lru-blend-alpha=0.5 \
     --model.pre-lnorm=False \
-    --model.pos-type=rope \
+    --model.pos-type=alibi \
     --model.train-stride=10 \
     --training.context-length=10 \
     --training.sections=3 \
@@ -43,7 +43,7 @@ python3 src/train.py \
     --model.state-dim=4 \
     --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=ffn+gelu+rope \
+    --text=ffn+gelu+alibi \
     --training.batch-size=512 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
@@ -59,7 +59,7 @@ python3 src/train.py \
     --training.warmup-steps=10000 \
     --training.weight-decay=0.01 \
     --wandb.project-name=MATL-T-Maze \
-    --wandb.wwandb=True \
+    --wandb.wwandb=False \
     --model.use-moe=False \
     --model.num-experts=8 \
     --model.top-k=2 \
@@ -84,4 +84,3 @@ python3 src/train.py \
 # --model.pos-type=rope        # Rotary Position Embedding (RoPE) - works on head_dim
 # --model.pos-type=yarn        # YaRN - Yet another RoPE extensioN (efficient context extension)
 #                              # YaRN provides 4x context extension with proper interpolation/extrapolation
-# --model.pos-type=alibi       # ALiBi - Attention with Linear Biases (train short, test long)

@@ -450,3 +450,101 @@ class YaRNMultiHeadAttention(nn.Module):
         projected = self.w_o(attention_output)
         
         return self.dropout_out(projected)
+
+
+class ALiBiMultiHeadAttention(nn.Module):
+    """Multi-head attention mechanism with ALiBi (Attention with Linear Biases) support"""
+    
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1, attn_dropout: float = 0.0):
+        super().__init__()
+        assert d_model % n_heads == 0
+        
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.d_k = d_model // n_heads
+        
+        self.w_q = nn.Linear(d_model, d_model, bias=False)
+        self.w_k = nn.Linear(d_model, d_model, bias=False)  
+        self.w_v = nn.Linear(d_model, d_model, bias=False)
+        self.w_o = nn.Linear(d_model, d_model)
+        
+        self.dropout_attn = nn.Dropout(attn_dropout)
+        self.dropout_out = nn.Dropout(dropout)
+        
+    def forward(
+        self, 
+        query: torch.Tensor,
+        key: torch.Tensor, 
+        value: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+        is_causal: bool = False,
+        rel_bias: Optional[torch.Tensor] = None,
+        alibi_embeddings = None,
+        alibi_bias: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Multi-head attention with ALiBi support.
+
+        Args:
+            query: [B, T_q, D]
+            key:   [B, T_k, D]
+            value: [B, T_v, D]
+            mask:  optional boolean mask broadcastable to [B, H, T_q, T_k]
+            is_causal: if True, apply causal masking on top of provided mask
+            rel_bias: optional relative bias tensor (ignored when using ALiBi)
+            alibi_embeddings: ALiBi embedding module (ALiBiPositionalEmbedding instance)
+            alibi_bias: precomputed ALiBi bias matrix [n_heads, seq_len, seq_len]
+
+        Returns:
+            output: [B, T_q, D]
+        """
+        batch_size = query.size(0)
+        
+        # Linear projections
+        Q = self.w_q(query)  # (B, T_q, D)
+        K = self.w_k(key)    # (B, T_k, D)
+        V = self.w_v(value)  # (B, T_v, D)
+        
+        # Reshape for multi-head attention
+        Q = Q.view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # (B, H, T_q, d_k)
+        K = K.view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # (B, H, T_k, d_k)
+        V = V.view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # (B, H, T_v, d_k)
+        
+        # Scaled dot-product attention
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)  # (B, H, T_q, T_k)
+        
+        # Apply ALiBi bias if provided
+        if alibi_bias is not None:
+            # alibi_bias: [n_heads, seq_len, seq_len]
+            # Expand for batch dimension: [1, n_heads, seq_len, seq_len]
+            alibi_bias_expanded = alibi_bias.unsqueeze(0)  # [1, H, T, T]
+            scores = scores + alibi_bias_expanded
+        elif alibi_embeddings is not None:
+            # Generate ALiBi bias on the fly
+            seq_len = scores.size(-1)
+            alibi_bias_computed = alibi_embeddings.get_bias(seq_len, scores.device, scores.dtype)
+            alibi_bias_expanded = alibi_bias_computed.unsqueeze(0)  # [1, H, T, T]
+            scores = scores + alibi_bias_expanded
+        
+        # Apply additional mask if provided
+        if mask is not None:
+            scores = scores.masked_fill(mask, float('-inf'))
+        
+        # Apply causal mask if requested (ALiBi already includes causal masking)
+        if is_causal and alibi_bias is None and alibi_embeddings is None:
+            # Only apply causal mask if ALiBi is not being used (ALiBi includes causal masking)
+            t_q, t_k = scores.size(-2), scores.size(-1)
+            causal_mask = torch.triu(torch.ones(t_q, t_k, dtype=torch.bool, device=scores.device), 1)
+            scores = scores.masked_fill(causal_mask, float('-inf'))
+        
+        # Softmax and attention dropout
+        attn_weights = torch.softmax(scores, dim=-1)  # (B, H, T_q, T_k)
+        attn_weights = self.dropout_attn(attn_weights)
+        
+        # Apply attention to values
+        attn_output = torch.matmul(attn_weights, V)  # (B, H, T_q, d_k)
+        
+        # Concatenate heads and put through final linear layer
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)  # (B, T_q, D)
+        
+        return self.dropout_out(self.w_o(attn_output))

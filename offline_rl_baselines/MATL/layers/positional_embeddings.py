@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from typing import Tuple
+import math
+from typing import Tuple, Optional
 
 
 class PositionalEmbedding(nn.Module):
@@ -436,3 +437,192 @@ class YaRNPositionalEmbedding(nn.Module):
             
         positions = torch.arange(position_offset, position_offset + seq_len, device=device)
         return positions
+
+
+class ALiBiPositionalEmbedding(nn.Module):
+    """
+    ALiBi (Attention with Linear Biases) Positional Embedding
+    
+    Based on "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation"
+    https://arxiv.org/abs/2108.12409
+    
+    ALiBi applies linear biases to attention scores based on distance between positions.
+    It does NOT include causal masking - that should be applied separately in attention.
+    
+    Key benefits:
+    - No maximum sequence length limitation
+    - No additional parameters
+    - Enables training on short sequences and testing on long sequences
+    - Very efficient computation
+    
+    Args:
+        n_heads: number of attention heads
+        
+    Usage:
+        alibi = ALiBiPositionalEmbedding(n_heads=8)
+        bias_matrix = alibi.get_bias(seq_len=128)  # [1, n_heads, seq_len, seq_len]
+        
+        # For cross-attention (e.g., tokens -> memory):
+        bias_cross = alibi.get_bias_from_positions(q_pos, k_pos)  # [1, n_heads, T_q, T_k]
+    """
+    
+    def __init__(self, n_heads: int):
+        super().__init__()
+        self.n_heads = n_heads
+        
+        # Compute ALiBi slopes for each attention head
+        slopes = self._get_alibi_slopes(n_heads)
+        self.register_buffer('slopes', slopes)  # [n_heads]
+        
+        # Cache for bias matrices
+        self.max_cached_len = 0
+        self.register_buffer('cached_bias', torch.empty(0), persistent=False)
+    
+    def _get_alibi_slopes(self, n_heads: int) -> torch.Tensor:
+        """
+        Compute ALiBi slopes for attention heads.
+        
+        The slopes follow the pattern from the original paper:
+        - For powers of 2: slopes = [1/2^(i/n) for i in range(n)]
+        - For non-powers of 2: combine two power-of-2 sequences
+        
+        Args:
+            n_heads: number of attention heads
+            
+        Returns:
+            slopes tensor [n_heads] (negative values for distance penalty)
+        """
+        def slopes_power_of_2(n):
+            start = 2.0 ** (-2.0 ** -(math.log2(n) - 3))
+            ratio = start
+            return [start * (ratio ** i) for i in range(n)]
+        
+        if (math.log2(n_heads)).is_integer():
+            # n_heads is a power of 2
+            slopes = slopes_power_of_2(n_heads)
+        else:
+            # n_heads is not a power of 2
+            closest_power_of_2 = 2 ** math.floor(math.log2(n_heads))
+            slopes = (
+                slopes_power_of_2(closest_power_of_2) +
+                slopes_power_of_2(2 * closest_power_of_2)[0::2][:n_heads - closest_power_of_2]
+            )
+        
+        # Return negative slopes for distance penalty (farther = more negative)
+        return torch.tensor(slopes, dtype=torch.float32) * -1.0
+    
+    def _build_bias(self, seq_len: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        """
+        Build ALiBi bias matrix for self-attention (square matrix).
+        
+        Args:
+            seq_len: sequence length
+            device: target device
+            dtype: target dtype
+            
+        Returns:
+            bias matrix [1, n_heads, seq_len, seq_len] ready for broadcast with [B, H, T, T] scores
+        """
+        # Create position indices
+        pos = torch.arange(seq_len, device=device)
+        
+        # Compute relative distances: j - i (key position j, query position i)
+        # Shape: [seq_len, seq_len]
+        distances = pos[None, :] - pos[:, None]
+        
+        # Apply slopes to get bias for each head
+        # slopes: [n_heads] -> [n_heads, 1, 1]
+        # distances: [seq_len, seq_len] -> [1, seq_len, seq_len]
+        # Result: [n_heads, seq_len, seq_len]
+        slopes = self.slopes.to(device=device, dtype=dtype)
+        bias = slopes.view(-1, 1, 1) * distances.view(1, seq_len, seq_len)
+        
+        # Return [1, n_heads, seq_len, seq_len] for easy broadcast with [B, H, T, T]
+        return bias.unsqueeze(0)
+    
+    def get_bias(self, seq_len: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+        """
+        Get ALiBi bias matrix for self-attention.
+        
+        Args:
+            seq_len: sequence length
+            device: target device (defaults to slopes device)
+            dtype: target dtype (defaults to slopes dtype)
+            
+        Returns:
+            bias matrix [1, n_heads, seq_len, seq_len]
+        """
+        if device is None:
+            device = self.slopes.device
+        if dtype is None:
+            dtype = self.slopes.dtype
+            
+        # Check if we need to rebuild cache
+        if seq_len > self.max_cached_len or self.cached_bias.numel() == 0:
+            # Build new bias matrix
+            bias = self._build_bias(seq_len, device, dtype)
+            
+            # Update cache
+            self.register_buffer('cached_bias', bias, persistent=False)
+            self.max_cached_len = seq_len
+            
+            return bias
+        else:
+            # Use cached bias matrix (slice if needed)
+            cached_bias = self.cached_bias.to(device=device, dtype=dtype)
+            return cached_bias[:, :, :seq_len, :seq_len]
+    
+    def get_bias_from_positions(
+        self, 
+        q_pos: torch.Tensor, 
+        k_pos: torch.Tensor,
+        device: Optional[torch.device] = None, 
+        dtype: Optional[torch.dtype] = None
+    ) -> torch.Tensor:
+        """
+        Get ALiBi bias matrix for arbitrary query and key positions (e.g., cross-attention).
+        
+        Args:
+            q_pos: [T_q] absolute indices of query positions
+            k_pos: [T_k] absolute indices of key positions  
+            device: target device (defaults to slopes device)
+            dtype: target dtype (defaults to slopes dtype)
+            
+        Returns:
+            bias matrix [1, n_heads, T_q, T_k]
+        """
+        if device is None:
+            device = self.slopes.device
+        if dtype is None:
+            dtype = self.slopes.dtype
+            
+        q_pos = q_pos.to(device)
+        k_pos = k_pos.to(device)
+        
+        # Compute relative distances: j - i (key position j, query position i)
+        # Shape: [T_q, T_k]
+        distances = k_pos[None, :] - q_pos[:, None]
+        
+        # Apply slopes to get bias for each head
+        # slopes: [n_heads] -> [n_heads, 1, 1]
+        # distances: [T_q, T_k] -> [1, T_q, T_k]
+        # Result: [n_heads, T_q, T_k]
+        slopes = self.slopes.to(device=device, dtype=dtype)
+        bias = slopes.view(-1, 1, 1) * distances.view(1, *distances.shape)
+        
+        # Return [1, n_heads, T_q, T_k] for easy broadcast with [B, H, T_q, T_k]
+        return bias.unsqueeze(0)
+    
+    def forward(self, seq_len: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+        """
+        Forward pass to get ALiBi bias matrix for self-attention.
+        
+        Args:
+            seq_len: sequence length
+            device: target device
+            dtype: target dtype
+            
+        Returns:
+            bias matrix [1, n_heads, seq_len, seq_len]
+        """
+        return self.get_bias(seq_len, device, dtype)
