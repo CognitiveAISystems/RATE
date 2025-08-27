@@ -43,7 +43,7 @@ python3 src/train.py \
     --model.state-dim=4 \
     --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=MATL \
+    --text=ffn+gelu \
     --training.batch-size=512 \
     --training.beta-1=0.95\
     --training.beta-2=0.99 \

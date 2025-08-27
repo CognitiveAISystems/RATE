@@ -214,11 +214,20 @@ class Trainer(BaseTrainer):
         print(f"Model dtype: {self.dtype}")
         if self.config["model_mode"] == "MATL":
             print(f"MATL sequence format: {getattr(self.model, 'sequence_format', 'sra')}")
+            # Print MoE statistics if available
+            moe_stats = self.model.get_moe_stats()
+            if moe_stats["moe_enabled"]:
+                print(f"MoE enabled: {moe_stats['num_experts']} experts, top-{moe_stats['top_k']}")
+                print(f"Expert parameters: {moe_stats['expert_parameters']:,} ({moe_stats['expert_param_ratio']:.1%} of total)")
+                print(f"Using SwiGLU: {moe_stats['use_swiglu']}")
+                print(f"Load balancing coefficient: {moe_stats['load_balancing_coef']}")
+            else:
+                print("MoE disabled - using standard FFN")
         print("\nConfiguration:")
         print_config(self.config)
         print('\n')
 
-    def calculate_losses(self, logits, target, masks, flag, q1_value=None, q2_value=None, cql_loss=None, v_value=None, iql_loss=None):
+    def calculate_losses(self, logits, target, masks, flag, q1_value=None, q2_value=None, cql_loss=None, v_value=None, iql_loss=None, aux_loss=None):
         """Calculate training losses and metrics for different environments and models.
 
         Args:
@@ -359,6 +368,10 @@ class Trainer(BaseTrainer):
 
         additional_metrics = {}
 
+        # Add MoE auxiliary loss if available
+        if aux_loss is not None:
+            additional_metrics["moe_aux_loss"] = aux_loss.item() if hasattr(aux_loss, 'item') else aux_loss
+
         # Add IQL loss if available
         if iql_loss is not None:
             # IQL returns a dictionary of loss components
@@ -379,6 +392,9 @@ class Trainer(BaseTrainer):
             additional_metrics["total_loss"] = optimization_loss.item()
         else:
             optimization_loss = loss
+            # Add MoE auxiliary loss to main loss for optimization
+            if aux_loss is not None:
+                optimization_loss = optimization_loss + aux_loss
 
         if metrics_to_log:
             for metric_name, metric_value in metrics_to_log.items():
@@ -665,6 +681,7 @@ class Trainer(BaseTrainer):
                         memory = res.get('new_mems', None)
                         mem_tokens = res.get('mem_tokens', None)
                         memory_states = res.get('memory_states', None)
+                        aux_loss = res.get('aux_loss', None)  # MoE auxiliary loss
                         
 
                         # For IQL, we need to handle the case differently
@@ -708,7 +725,7 @@ class Trainer(BaseTrainer):
                         loss, additional_metrics = self.calculate_losses(
                             logits, target=y1, masks=masks1, flag=flag,
                             q1_value=q1_value, q2_value=q2_value, cql_loss=cql_loss,
-                            v_value=v_value, iql_loss=iql_loss
+                            v_value=v_value, iql_loss=iql_loss, aux_loss=aux_loss
                         )
 
                         if self.wwandb:

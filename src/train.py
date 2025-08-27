@@ -170,6 +170,13 @@ class ModelConfig:
     sequence_format: Optional[str] = None # ["sra"] Format: "s" (state only), "sa" (state+action), "sra" (state+rtg+action), "sr" (state+rtg)
     # Norm type for MATL (default: "layer")
     norm_type: Optional[str] = None # ["layer"] Norm type: "layer" (layer norm), "rmsnorm" (RMS norm)
+    # MoE parameters for MATL
+    use_moe: FlagConversionOff[Optional[bool]] = None # [False] Whether to use Mixture of Experts
+    num_experts: Optional[int] = None # [8] Number of experts in MoE
+    top_k: Optional[int] = None # [2] Number of experts to select per token  
+    expert_dropout: Optional[float] = None # [None] Dropout for experts (uses model dropout if None)
+    load_balancing_loss_coef: Optional[float] = None # [0.01] Coefficient for load balancing loss
+    use_swiglu: FlagConversionOff[Optional[bool]] = None # [True] Whether to use SwiGLU activation in FFN/experts
 
 
 @dataclass

@@ -5,6 +5,7 @@ from .positional_embeddings import PositionalEmbedding, LearnablePositionalEmbed
 from .memory import MemoryState
 from .relative_bias import RelativeBias
 from .normalization import RMSNorm, get_norm_layer
+from .mixture_of_experts import MoEFeedForwardNetwork, MixtureOfExperts, SwiGLU, Expert, Router
 
 __all__ = [
     'RelPartialLearnableMultiHeadAttn',
@@ -16,5 +17,10 @@ __all__ = [
     'MemoryState',
     'RelativeBias',
     'RMSNorm',
-    'get_norm_layer'
+    'get_norm_layer',
+    'MoEFeedForwardNetwork',
+    'MixtureOfExperts',
+    'SwiGLU',
+    'Expert',
+    'Router'
 ]

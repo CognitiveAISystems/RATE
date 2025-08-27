@@ -12,7 +12,8 @@ from offline_rl_baselines.MATL.layers import (
     LearnablePositionalEmbedding,
     SinusoidalPositionalEmbedding,
     MemoryState, RelativeBias,
-    RMSNorm, get_norm_layer
+    RMSNorm, get_norm_layer,
+    MoEFeedForwardNetwork
 )
 from RATE.env_encoders import ObsEncoder, ActEncoder, RTGEncoder, ActDecoder
 
@@ -56,7 +57,14 @@ class MATLLayer(nn.Module):
         use_lru=True,
         lru_blend_alpha=0.999,
         memory_dropout=None,
-        norm_type=None
+        norm_type=None,
+        # MoE parameters
+        use_moe=False,
+        num_experts=8,
+        top_k=2,
+        expert_dropout=None,
+        load_balancing_loss_coef=0.01,
+        use_swiglu=True
     ):
         super().__init__()
         
@@ -70,6 +78,13 @@ class MATLLayer(nn.Module):
         self.lru_blend_alpha = lru_blend_alpha
         self.memory_dropout = memory_dropout if memory_dropout is not None else dropout
         self.norm_type = norm_type
+        # MoE parameters
+        self.use_moe = use_moe
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.expert_dropout = expert_dropout if expert_dropout is not None else dropout
+        self.load_balancing_loss_coef = load_balancing_loss_coef
+        self.use_swiglu = use_swiglu
         
         # --- Use appropriate attention for the pos_encoding type ---
         # The self-attention mechanism must be chosen based on the positional encoding strategy.
@@ -101,9 +116,33 @@ class MATLLayer(nn.Module):
         # Relative bias for cross-attention
         self.cross_rel_bias = RelativeBias(self.num_heads, max_seq_len)
         
-        # Feed-forward networks
-        self.token_ffn = FeedForwardNetwork(self.d_model, d_ff, dropout, pre_lnorm=pre_lnorm, norm_type=self.norm_type)
-        self.memory_ffn = FeedForwardNetwork(self.d_model, d_ff, dropout, pre_lnorm=pre_lnorm, norm_type=self.norm_type)
+        # Feed-forward networks - use MoE if enabled
+        self.token_ffn = MoEFeedForwardNetwork(
+            d_model=self.d_model, 
+            d_ff=d_ff, 
+            dropout=dropout, 
+            pre_lnorm=pre_lnorm, 
+            norm_type=self.norm_type,
+            use_moe=self.use_moe,
+            num_experts=self.num_experts,
+            top_k=self.top_k,
+            expert_dropout=self.expert_dropout,
+            load_balancing_loss_coef=self.load_balancing_loss_coef,
+            use_swiglu=self.use_swiglu
+        )
+        self.memory_ffn = MoEFeedForwardNetwork(
+            d_model=self.d_model, 
+            d_ff=d_ff, 
+            dropout=dropout, 
+            pre_lnorm=pre_lnorm, 
+            norm_type=self.norm_type,
+            use_moe=self.use_moe,
+            num_experts=self.num_experts,
+            top_k=self.top_k,
+            expert_dropout=self.expert_dropout,
+            load_balancing_loss_coef=self.load_balancing_loss_coef,
+            use_swiglu=self.use_swiglu
+        )
         
         # Layer normalization
         self.token_norm_cross = get_norm_layer(self.norm_type, self.d_model)
@@ -177,6 +216,7 @@ class MATLLayer(nn.Module):
         Returns:
             output: [T, B, D] updated token states for this layer
             memory: MemoryState(vec [B, M, D], pos [B, M]) updated according to write policy
+            aux_loss: Optional auxiliary loss from MoE (load balancing loss)
         """
 
         mem_vec, mem_pos = memory_state.vec, memory_state.pos
@@ -227,7 +267,7 @@ class MATLLayer(nn.Module):
         h = self._apply_sublayer(h, self.token_norm_cross, token_reads_from_memory, self.pre_lnorm)
         
         # Token FFN (handles its own norm and residual)
-        h = self.token_ffn(h)
+        h, token_aux_loss = self.token_ffn(h)
         
         # ========== Memory Track ==========
         mem_res = mem_vec
@@ -264,7 +304,7 @@ class MATLLayer(nn.Module):
 
         u = self._apply_sublayer(mem_vec, self.memory_norm_cross, memory_writes_from_tokens, self.pre_lnorm)
 
-        u_processed = self.memory_ffn(u)
+        u_processed, memory_aux_loss = self.memory_ffn(u)
         # Apply dropout to memory updates for regularization on long sequences
         if self.training:
             u_processed = F.dropout(u_processed, p=self.memory_dropout, training=True)
@@ -314,8 +354,17 @@ class MATLLayer(nn.Module):
         
         new_memory_state = MemoryState(new_vec, new_pos)
         
+        # Collect auxiliary losses from MoE if any
+        aux_losses = []
+        if token_aux_loss is not None:
+            aux_losses.append(token_aux_loss)
+        if memory_aux_loss is not None:
+            aux_losses.append(memory_aux_loss)
+        
+        total_aux_loss = sum(aux_losses) if aux_losses else None
+        
         # Return hidden representations (vocabulary projection done by MATLModel)
-        return h, new_memory_state
+        return h, new_memory_state, total_aux_loss
 
 
 class MATLModel(nn.Module):
@@ -345,6 +394,13 @@ class MATLModel(nn.Module):
         dtype="float32",  # Model dtype: "float32", "float64", "bfloat16"
         sequence_format="sra",  # Sequence format: "s", "sa", "sra", "sr"
         norm_type=None,  # Normalization type: "layer", "rmsnorm", or None (defaults to LayerNorm)
+        # MoE parameters
+        use_moe=False,  # Whether to use Mixture of Experts
+        num_experts=8,  # Number of experts in MoE
+        top_k=2,  # Number of experts to select per token
+        expert_dropout=None,  # Dropout for experts (uses model dropout if None)
+        load_balancing_loss_coef=0.01,  # Coefficient for load balancing loss
+        use_swiglu=True,  # Whether to use SwiGLU activation in FFN/experts
         **kwargs
     ):
         super().__init__()
@@ -361,6 +417,13 @@ class MATLModel(nn.Module):
         self.memory_size = memory_size
         self.padding_idx = padding_idx
         self.norm_type = norm_type
+        # MoE parameters
+        self.use_moe = use_moe
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.expert_dropout = expert_dropout
+        self.load_balancing_loss_coef = load_balancing_loss_coef
+        self.use_swiglu = use_swiglu
         
         # Set up dtype
         dtype_map = {
@@ -418,7 +481,8 @@ class MATLModel(nn.Module):
             d_model, d_ff, n_head, memory_size, self.pos_type, 
             dropout, dropatt, pre_lnorm, max_seq_len,
             memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout,
-            self.norm_type
+            self.norm_type, self.use_moe, self.num_experts, self.top_k,
+            self.expert_dropout, self.load_balancing_loss_coef, self.use_swiglu
         ) for _ in range(self.num_layers)])
         
         self.drop = nn.Dropout(dropout)
@@ -650,12 +714,14 @@ class MATLModel(nn.Module):
             core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
         
         updated_memory_states = []
+        total_aux_loss = None
+        layer_aux_losses = []
         
         for i, layer in enumerate(self.layers):
             # Memory detaching is handled in the trainer, not here
             layer_memory = memory_states[i]
             
-            core_out, updated_mem = layer(
+            core_out, updated_mem, layer_aux_loss = layer(
                 core_out,             # [T, B, D]
                 layer_memory,         # MemoryState
                 tok_pos,              # [T] integer positions
@@ -665,6 +731,14 @@ class MATLModel(nn.Module):
                 attn_mask
             )
             updated_memory_states.append(updated_mem)
+            
+            # Collect auxiliary losses from MoE
+            if layer_aux_loss is not None:
+                layer_aux_losses.append(layer_aux_loss)
+        
+        # Sum all auxiliary losses
+        if layer_aux_losses:
+            total_aux_loss = sum(layer_aux_losses)
         
         core_out = core_out.transpose(0, 1)  # [B, T, D]
         
@@ -678,7 +752,40 @@ class MATLModel(nn.Module):
             'logits': logits,
             'memory_states': updated_memory_states,
             'new_mems': None,  # For compatibility with RATE
-            'mem_tokens': None  # MATL doesn't use mem_tokens
+            'mem_tokens': None,  # MATL doesn't use mem_tokens
+            'aux_loss': total_aux_loss  # MoE auxiliary loss
         }
         
-        return output 
+        return output
+    
+    def get_moe_stats(self) -> dict:
+        """Get MoE usage statistics and parameter counts"""
+        if not self.use_moe:
+            return {"moe_enabled": False}
+        
+        total_params = sum(p.numel() for p in self.parameters())
+        moe_params = 0
+        expert_params = 0
+        
+        for layer in self.layers:
+            # Count MoE parameters
+            moe_params += sum(p.numel() for p in layer.token_ffn.parameters())
+            moe_params += sum(p.numel() for p in layer.memory_ffn.parameters())
+            
+            # Count expert parameters specifically
+            if hasattr(layer.token_ffn.core_net, 'experts'):
+                expert_params += sum(p.numel() for expert in layer.token_ffn.core_net.experts for p in expert.parameters())
+            if hasattr(layer.memory_ffn.core_net, 'experts'):
+                expert_params += sum(p.numel() for expert in layer.memory_ffn.core_net.experts for p in expert.parameters())
+        
+        return {
+            "moe_enabled": True,
+            "num_experts": self.num_experts,
+            "top_k": self.top_k,
+            "total_parameters": total_params,
+            "moe_parameters": moe_params,
+            "expert_parameters": expert_params,
+            "expert_param_ratio": expert_params / total_params if total_params > 0 else 0,
+            "use_swiglu": self.use_swiglu,
+            "load_balancing_coef": self.load_balancing_loss_coef
+        } 
