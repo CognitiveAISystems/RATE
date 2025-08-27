@@ -171,7 +171,7 @@ class ModelConfig:
     # Norm type for MATL (default: "layer")
     norm_type: Optional[str] = None # ["layer"] Norm type: "layer" (layer norm), "rmsnorm" (RMS norm)
     # MoE parameters for MATL
-    use_moe: FlagConversionOff[Optional[bool]] = None # [False] Whether to use Mixture of Experts
+    use_moe: FlagConversionOff[Optional[bool]] = None # [False] Whether to use Mixture of Experts instead of FFN
     num_experts: Optional[int] = None # [8] Number of experts in MoE
     top_k: Optional[int] = None # [2] Number of experts to select per token  
     expert_dropout: Optional[float] = None # [None] Dropout for experts (uses model dropout if None)
