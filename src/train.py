@@ -168,6 +168,8 @@ class ModelConfig:
     max_seq_len: Optional[int] = None # [1000] Maximum sequence length for positional encoding
     # Sequence format for MATL (default: "sra")
     sequence_format: Optional[str] = None # ["sra"] Format: "s" (state only), "sa" (state+action), "sra" (state+rtg+action), "sr" (state+rtg)
+    # Norm type for MATL (default: "layer")
+    norm_type: Optional[str] = None # ["layer"] Norm type: "layer" (layer norm), "rmsnorm" (RMS norm)
 
 
 @dataclass
