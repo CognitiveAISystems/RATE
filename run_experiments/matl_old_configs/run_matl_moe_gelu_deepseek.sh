@@ -61,12 +61,12 @@ python3 src/train.py \
     --wandb.project-name=MATL-T-Maze \
     --wandb.wwandb=True \
     --model.use-moe=True \
-    --model.num-experts=32 \
-    --model.top-k=3 \
+    --model.num-experts=8 \
+    --model.top-k=2 \
     --model.use-shared-expert=True \
-    --model.shared-gate-mode=learned \
-    --model.shared-gate-init=0.0 \
-    --model.shared-alpha-fixed=0.2 \
+    --model.n-shared-experts=1 \
+    --model.shared-d-ff=512 \
+    --model.routed-d-ff=64 \
     --model.use-swiglu=False \
     --model.load-balancing-loss-coef=0.01
 

@@ -71,11 +71,11 @@ class MATLLayer(nn.Module):
         expert_dropout=None,
         load_balancing_loss_coef=0.01,
         use_swiglu=True,
-        # DeepSeekMoE (shared expert) additions
+        # DeepSeek-style additions
         use_shared_expert=True,
-        shared_gate_mode="learned",
-        shared_gate_init=0.0,
-        shared_alpha_fixed=0.2
+        n_shared_experts=1,
+        shared_d_ff=None,
+        routed_d_ff=None,
     ):
         super().__init__()
         
@@ -98,9 +98,9 @@ class MATLLayer(nn.Module):
         self.use_swiglu = use_swiglu
         # DeepSeekMoE (shared expert) additions
         self.use_shared_expert = use_shared_expert
-        self.shared_gate_mode = shared_gate_mode
-        self.shared_gate_init = shared_gate_init
-        self.shared_alpha_fixed = shared_alpha_fixed
+        self.n_shared_experts = n_shared_experts
+        self.shared_d_ff = shared_d_ff
+        self.routed_d_ff = routed_d_ff
         
         # --- Use appropriate attention for the pos_encoding type ---
         # The self-attention mechanism must be chosen based on the positional encoding strategy.
@@ -158,39 +158,31 @@ class MATLLayer(nn.Module):
             d_model=self.d_model, d_ff=d_ff, dropout=dropout, pre_lnorm=pre_lnorm,
             norm_type=self.norm_type,
             use_moe=self.use_moe,
-            num_experts=self.num_experts,          # routed experts
-            top_k=self.top_k,                      # total K (shared will consume 1)
+            num_experts=self.num_experts,
+            top_k=self.top_k,                              # TOTAL K
             expert_dropout=self.expert_dropout,
             load_balancing_loss_coef=self.load_balancing_loss_coef,
             use_swiglu=self.use_swiglu,
-            # new — turn on shared expert on the token path
             use_shared_expert=self.use_shared_expert,
-            shared_gate_mode=self.shared_gate_mode,            # or "fixed"
-            shared_gate_init=self.shared_gate_init,                  # bias init for sigmoid gate
-            shared_alpha_fixed=self.shared_alpha_fixed                 # used only if mode="fixed"
+            n_shared_experts=self.n_shared_experts,
+            shared_d_ff=self.shared_d_ff or d_ff,         # default shared wide = d_ff
+            routed_d_ff=self.routed_d_ff or d_ff          # default routed = d_ff
         )
-
-        # self.memory_ffn = MoEFeedForwardNetwork(
-        #     d_model=self.d_model, d_ff=d_ff, dropout=dropout, pre_lnorm=pre_lnorm,
-        #     norm_type=self.norm_type,
-        #     use_moe=False,                         # keep memory path dense (recommended)
-        #     use_swiglu=self.use_swiglu
-        # )
         self.memory_ffn = MoEFeedForwardNetwork(
             d_model=self.d_model, d_ff=d_ff, dropout=dropout, pre_lnorm=pre_lnorm,
             norm_type=self.norm_type,
             use_moe=self.use_moe,
-            num_experts=self.num_experts,          # routed experts
-            top_k=self.top_k,                      # total K (shared will consume 1)
+            num_experts=self.num_experts,
+            top_k=self.top_k,
             expert_dropout=self.expert_dropout,
             load_balancing_loss_coef=self.load_balancing_loss_coef,
             use_swiglu=self.use_swiglu,
-            # new — turn on shared expert on the token path
             use_shared_expert=self.use_shared_expert,
-            shared_gate_mode=self.shared_gate_mode,            # or "fixed"
-            shared_gate_init=self.shared_gate_init,                  # bias init for sigmoid gate
-            shared_alpha_fixed=self.shared_alpha_fixed                 # used only if mode="fixed"
+            n_shared_experts=self.n_shared_experts,
+            shared_d_ff=self.shared_d_ff or d_ff,
+            routed_d_ff=self.routed_d_ff or d_ff
         )
+
         
         # Layer normalization
         self.token_norm_cross = get_norm_layer(self.norm_type, self.d_model)
@@ -504,11 +496,11 @@ class MATLModel(nn.Module):
         expert_dropout=None,  # Dropout for experts (uses model dropout if None)
         load_balancing_loss_coef=0.01,  # Coefficient for load balancing loss
         use_swiglu=True,  # Whether to use SwiGLU activation in FFN/experts
-        # DeepSeekMoE (shared expert) additions
+        # DeepSeek-style MoE additions
         use_shared_expert=True,
-        shared_gate_mode="learned",
-        shared_gate_init=0.0,
-        shared_alpha_fixed=0.2,
+        n_shared_experts=1,
+        shared_d_ff=None,
+        routed_d_ff=None,
         **kwargs
     ):
         super().__init__()
@@ -534,9 +526,9 @@ class MATLModel(nn.Module):
         self.use_swiglu = use_swiglu
 
         self.use_shared_expert = use_shared_expert
-        self.shared_gate_mode = shared_gate_mode
-        self.shared_gate_init = shared_gate_init
-        self.shared_alpha_fixed = shared_alpha_fixed
+        self.n_shared_experts = n_shared_experts or 1
+        self.shared_d_ff = shared_d_ff
+        self.routed_d_ff = routed_d_ff
         
         # Set up dtype
         dtype_map = {
@@ -611,12 +603,22 @@ class MATLModel(nn.Module):
         self.memory_dropout = memory_dropout if memory_dropout is not None else dropout
         
         self.layers = nn.ModuleList([MATLLayer(
-            d_model, d_ff, n_head, memory_size, self.pos_type, 
+            d_model, d_ff, n_head, memory_size, self.pos_type,
             dropout, dropatt, pre_lnorm, max_seq_len,
             memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout,
-            self.norm_type, self.use_moe, self.num_experts, self.top_k,
-            self.expert_dropout, self.load_balancing_loss_coef, self.use_swiglu,
-            self.use_shared_expert, self.shared_gate_mode, self.shared_gate_init, self.shared_alpha_fixed
+            self.norm_type,
+            # MoE
+            use_moe=self.use_moe,
+            num_experts=self.num_experts,
+            top_k=self.top_k,                     # TOTAL K
+            expert_dropout=self.expert_dropout,
+            load_balancing_loss_coef=self.load_balancing_loss_coef,
+            use_swiglu=self.use_swiglu,
+            # DeepSeek-style
+            use_shared_expert=self.use_shared_expert,
+            n_shared_experts=self.n_shared_experts,
+            shared_d_ff=self.shared_d_ff,
+            routed_d_ff=self.routed_d_ff
         ) for _ in range(self.num_layers)])
         
         self.drop = nn.Dropout(dropout)

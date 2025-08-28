@@ -171,19 +171,24 @@ class ModelConfig:
     # Norm type for MATL (default: "layer")
     norm_type: Optional[str] = None # ["layer"] Norm type: "layer" (layer norm), "rmsnorm" (RMS norm)
     # MoE parameters for MATL
-    use_moe: FlagConversionOff[Optional[bool]] = None   # [False]
-    num_experts: Optional[int] = None                   # [8] routed experts only
-    top_k: Optional[int] = None                         # [2] TOTAL K (shared consumes 1 when enabled)
-    expert_dropout: Optional[float] = None              # [None]
-    load_balancing_loss_coef: Optional[float] = None    # [0.01]
-    use_swiglu: FlagConversionOff[Optional[bool]] = None# [True]
+    use_moe: FlagConversionOff[Optional[bool]] = None     # [False]
+    num_experts: Optional[int] = None                     # [8] routed experts
+    top_k: Optional[int] = None                           # [2] TOTAL K = K_routed + K_shared
+    expert_dropout: Optional[float] = None                # [None]
+    load_balancing_loss_coef: Optional[float] = None      # [0.01]
+    use_swiglu: FlagConversionOff[Optional[bool]] = None  # [True]
 
-    # --- DeepSeekMoE (shared expert) additions ---
-    use_shared_expert: FlagConversionOff[Optional[bool]] = None      # [True] enable shared expert. If False, then old MoE; If True, then DeepSeekMoE
-    shared_gate_mode: Optional[str] = None                            # ["learned" | "fixed"]
-    shared_gate_init: Optional[float] = None                          # [0.0] bias for sigmoid gate if "learned"
-    shared_alpha_fixed: Optional[float] = None                        # [0.2] constant alpha if "fixed"
+    # DeepSeek-style knobs
+    use_shared_expert: FlagConversionOff[Optional[bool]] = None  # [True]
+    n_shared_experts: Optional[int] = None                       # [1]
+    # separate widths (recommendation: shared wide, routed narrow)
+    shared_d_ff: Optional[int] = None                            # defaults to d_ff if None
+    routed_d_ff: Optional[int] = None                            # defaults to d_ff if None
+    # keep combine identical to DeepSeek-v3 (sum); remove alpha- gating
 
+# --model.num-experts=8       # total routed experts
+# --model.top-k=2             # total experts per token (shared + routed)
+# --model.n-shared-experts=1  # 1 shared expert always-on
 
 @dataclass
 class OnlineInferenceConfig:

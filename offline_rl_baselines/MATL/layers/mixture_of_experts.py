@@ -68,98 +68,80 @@ class MixtureOfExperts(nn.Module):
     def __init__(
         self,
         d_model: int,
+        # keep d_ff for backward-compat; use explicit routed/shared widths below
         d_ff: int,
         num_experts: int = 8,
-        top_k: int = 2,                          # total K you pass from config
+        top_k: int = 2,                     # TOTAL K = K_routed + n_shared_experts
         dropout: float = 0.1,
         expert_dropout: float = 0.1,
         load_balancing_loss_coef: float = 0.01,
-        # --- new ---
-        use_shared_expert: bool = True,          # enable shared expert
-        shared_gate_mode: str = "learned",       # {"learned","fixed"}
-        shared_gate_init: float = 0.0,           # sigmoid(init) ~ 0.5 when 0.0
-        shared_alpha_fixed: float = 0.2          # used when shared_gate_mode=="fixed"
+        # DeepSeek-style
+        use_shared_expert: bool = True,
+        n_shared_experts: int = 1,
+        shared_d_ff: Optional[int] = None,
+        routed_d_ff: Optional[int] = None,
     ):
         super().__init__()
         self.d_model = d_model
-        self.num_experts = num_experts           # routed experts only
-        self.top_k_total = top_k                 # includes shared if enabled
+        self.num_experts = num_experts
+        self.n_shared = n_shared_experts if use_shared_expert else 0
+        self.top_k_total = top_k
+        self.top_k_routed = max(1, top_k - self.n_shared)  # DeepSeek: reserve slots for shared
         self.load_balancing_loss_coef = load_balancing_loss_coef
-        self.use_shared_expert = use_shared_expert
-        self.shared_gate_mode = shared_gate_mode
-        self.shared_alpha_fixed = shared_alpha_fixed
 
-        # Router over *routed* experts
-        self.router = Router(d_model, num_experts, top_k=max(1, top_k - (1 if use_shared_expert else 0)))
+        # Router over *routed* experts only
+        self.router = Router(d_model, num_experts, top_k=self.top_k_routed)
+
+        # Widths
+        routed_width = routed_d_ff or d_ff
+        shared_width = shared_d_ff or d_ff
 
         # Routed experts
-        # self.experts = nn.ModuleList([Expert(d_model, d_ff, expert_dropout) for _ in range(num_experts)])
-        # Routed experts (narrower: d_ff // 4)
         self.experts = nn.ModuleList([
-            Expert(d_model, max(1, d_ff // 4), expert_dropout)   # NEW
+            Expert(d_model, routed_width, expert_dropout)
             for _ in range(num_experts)
         ])
 
-        # Shared expert + isolated gate
-        if use_shared_expert:
-            self.shared_expert = Expert(d_model, d_ff, expert_dropout)
-            if shared_gate_mode == "learned":
-                self.shared_gate = nn.Linear(d_model, 1, bias=True)
-                with torch.no_grad():
-                    self.shared_gate.bias.fill_(shared_gate_init)
-                    if hasattr(self.shared_gate, "weight"):
-                        nn.init.zeros_(self.shared_gate.weight)
-            else:
-                self.register_parameter("shared_gate", None)
+        # Shared expert(s): always-on; sum all shared branches
+        if self.n_shared > 0:
+            self.shared_experts = nn.ModuleList([
+                Expert(d_model, shared_width, expert_dropout)
+                for _ in range(self.n_shared)
+            ])
         else:
-            self.register_parameter("shared_gate", None)
-            self.shared_expert = None
+            self.shared_experts = nn.ModuleList()
 
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor):
-        """
-        x: [B, S, D]
-        returns: y, aux_loss
-        """
         B, S, D = x.shape
-        # --- routed experts path ---
-        routed_top_k = max(1, self.router.top_k)   # already reserves 1 slot if shared is on
-        routed_gates, routed_indices = self.router(x, top_k=routed_top_k)  # [B,S,Kr]
 
+        # -------- routed path (top_k_routed) ----------
+        gates, indices = self.router(x, top_k=self.top_k_routed)  # [B,S,Kr]
         routed_out = torch.zeros_like(x)
         for expert_idx in range(self.num_experts):
-            expert_mask = (routed_indices == expert_idx)            # [B,S,Kr]
-            if expert_mask.any():
-                # sum gates for this expert (tokens that chose it)
-                expert_g = (routed_gates * expert_mask.float()).sum(dim=-1, keepdim=True)   # [B,S,1]
-                tokens = expert_g.squeeze(-1) > 0                                             # [B,S]
+            mask = (indices == expert_idx)                 # [B,S,Kr]
+            if mask.any():
+                g = (gates * mask.float()).sum(dim=-1, keepdim=True)  # [B,S,1]
+                tokens = g.squeeze(-1) > 0
                 if tokens.any():
-                    expert_in  = x[tokens]                                                    # [N,D]
-                    expert_out = self.experts[expert_idx](expert_in)                          # [N,D]
+                    xin = x[tokens]                       # [N,D]
+                    xout = self.experts[expert_idx](xin)  # [N,D]
                     contrib = torch.zeros_like(x)
-                    contrib[tokens] = expert_out
-                    contrib = contrib * expert_g
-                    routed_out += contrib
+                    contrib[tokens] = xout
+                    routed_out += contrib * g
 
-        # --- shared expert path (isolated) ---
-        if self.use_shared_expert:
-            # all tokens go through the shared expert
-            shared_out = self.shared_expert(x.reshape(-1, D)).reshape(B, S, D)                # [B,S,D]
-            if self.shared_gate_mode == "learned":
-                alpha = torch.sigmoid(self.shared_gate(x))                                    # [B,S,1]
-            else:
-                alpha = torch.full((B, S, 1), self.shared_alpha_fixed, device=x.device, dtype=x.dtype)
-            y = alpha * shared_out + (1.0 - alpha) * routed_out
-        else:
-            y = routed_out
+        # -------- shared path (always-on, sum) --------
+        shared_out = torch.zeros_like(x)
+        for se in self.shared_experts:
+            shared_out += se(x.reshape(-1, D)).reshape(B, S, D)
 
-        y = self.dropout(y)
+        y = self.dropout(routed_out + shared_out)
 
-        # load-balancing only across *routed* experts (isolation)
+        # load-balancing across routed only
         aux = None
         if self.training and self.load_balancing_loss_coef > 0:
-            aux = self._calculate_load_balancing_loss(routed_gates, routed_indices)
+            aux = self._calculate_load_balancing_loss(gates, indices)
         return y, aux
     
     def _calculate_load_balancing_loss(self, gates: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
@@ -199,9 +181,9 @@ class MoEFeedForwardNetwork(nn.Module):
         use_swiglu: bool = True,
         # --- new (all optional) ---
         use_shared_expert: bool = True,
-        shared_gate_mode: str = "learned",
-        shared_gate_init: float = 0.0,
-        shared_alpha_fixed: float = 0.2
+        n_shared_experts: int = 1,
+        shared_d_ff: Optional[int] = None,
+        routed_d_ff: Optional[int] = None
     ):
         super().__init__()
         self.pre_lnorm = pre_lnorm
@@ -212,16 +194,16 @@ class MoEFeedForwardNetwork(nn.Module):
         if use_moe:
             self.core_net = MixtureOfExperts(
                 d_model=d_model,
-                d_ff=d_ff,
+                d_ff=d_ff,  # kept for backward-compat
                 num_experts=num_experts,
-                top_k=top_k,
+                top_k=top_k,  # TOTAL K
                 dropout=dropout,
                 expert_dropout=expert_dropout,
                 load_balancing_loss_coef=load_balancing_loss_coef,
                 use_shared_expert=use_shared_expert,
-                shared_gate_mode=shared_gate_mode,
-                shared_gate_init=shared_gate_init,
-                shared_alpha_fixed=shared_alpha_fixed,
+                n_shared_experts=n_shared_experts,
+                shared_d_ff=shared_d_ff,
+                routed_d_ff=routed_d_ff,
             )
         else:
             # Use standard FFN with optional SwiGLU
