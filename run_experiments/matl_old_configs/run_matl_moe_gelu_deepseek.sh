@@ -9,7 +9,7 @@ python3 src/train.py \
     --model.norm-type=rmsnorm \
     --start-seed=1 \
     --end-seed=1 \
-    --dtype=float32 \
+    --dtype=bfloat16 \
     --data.gamma=1 \
     --data.max-length=None \
     --data.path-to-dataset=None \
@@ -26,7 +26,7 @@ python3 src/train.py \
     --model.use-lru=False \
     --model.lru-blend-alpha=0.5 \
     --model.pre-lnorm=False \
-    --model.pos-type=yarn \
+    --model.pos-type=learnable \
     --model.train-stride=10 \
     --training.context-length=10 \
     --training.sections=3 \
@@ -41,9 +41,9 @@ python3 src/train.py \
     --model.n-layer=6 \
     --model.padding-idx=-10 \
     --model.state-dim=4 \
-    --online-inference.best_checkpoint_metric=Success_rate_x100 \
+    --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=[new]-moe+yarn+s \
+    --text=moe_gelu+deepseek \
     --training.batch-size=512 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \

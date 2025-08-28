@@ -70,7 +70,12 @@ class MATLLayer(nn.Module):
         top_k=2,
         expert_dropout=None,
         load_balancing_loss_coef=0.01,
-        use_swiglu=True
+        use_swiglu=True,
+        # DeepSeekMoE (shared expert) additions
+        use_shared_expert=True,
+        shared_gate_mode="learned",
+        shared_gate_init=0.0,
+        shared_alpha_fixed=0.2
     ):
         super().__init__()
         
@@ -91,6 +96,11 @@ class MATLLayer(nn.Module):
         self.expert_dropout = expert_dropout if expert_dropout is not None else dropout
         self.load_balancing_loss_coef = load_balancing_loss_coef
         self.use_swiglu = use_swiglu
+        # DeepSeekMoE (shared expert) additions
+        self.use_shared_expert = use_shared_expert
+        self.shared_gate_mode = shared_gate_mode
+        self.shared_gate_init = shared_gate_init
+        self.shared_alpha_fixed = shared_alpha_fixed
         
         # --- Use appropriate attention for the pos_encoding type ---
         # The self-attention mechanism must be chosen based on the positional encoding strategy.
@@ -145,37 +155,46 @@ class MATLLayer(nn.Module):
         
         # Feed-forward networks - use MoE if enabled
         self.token_ffn = MoEFeedForwardNetwork(
-            d_model=self.d_model, 
-            d_ff=d_ff, 
-            dropout=dropout, 
-            pre_lnorm=pre_lnorm, 
+            d_model=self.d_model, d_ff=d_ff, dropout=dropout, pre_lnorm=pre_lnorm,
             norm_type=self.norm_type,
             use_moe=self.use_moe,
-            num_experts=self.num_experts,
-            top_k=self.top_k,
+            num_experts=self.num_experts,          # routed experts
+            top_k=self.top_k,                      # total K (shared will consume 1)
             expert_dropout=self.expert_dropout,
             load_balancing_loss_coef=self.load_balancing_loss_coef,
-            use_swiglu=self.use_swiglu
+            use_swiglu=self.use_swiglu,
+            # new — turn on shared expert on the token path
+            use_shared_expert=self.use_shared_expert,
+            shared_gate_mode=self.shared_gate_mode,            # or "fixed"
+            shared_gate_init=self.shared_gate_init,                  # bias init for sigmoid gate
+            shared_alpha_fixed=self.shared_alpha_fixed                 # used only if mode="fixed"
         )
+
+        # self.memory_ffn = MoEFeedForwardNetwork(
+        #     d_model=self.d_model, d_ff=d_ff, dropout=dropout, pre_lnorm=pre_lnorm,
+        #     norm_type=self.norm_type,
+        #     use_moe=False,                         # keep memory path dense (recommended)
+        #     use_swiglu=self.use_swiglu
+        # )
         self.memory_ffn = MoEFeedForwardNetwork(
-            d_model=self.d_model, 
-            d_ff=d_ff, 
-            dropout=dropout, 
-            pre_lnorm=pre_lnorm, 
+            d_model=self.d_model, d_ff=d_ff, dropout=dropout, pre_lnorm=pre_lnorm,
             norm_type=self.norm_type,
             use_moe=self.use_moe,
-            num_experts=self.num_experts,
-            top_k=self.top_k,
+            num_experts=self.num_experts,          # routed experts
+            top_k=self.top_k,                      # total K (shared will consume 1)
             expert_dropout=self.expert_dropout,
             load_balancing_loss_coef=self.load_balancing_loss_coef,
-            use_swiglu=self.use_swiglu
+            use_swiglu=self.use_swiglu,
+            # new — turn on shared expert on the token path
+            use_shared_expert=self.use_shared_expert,
+            shared_gate_mode=self.shared_gate_mode,            # or "fixed"
+            shared_gate_init=self.shared_gate_init,                  # bias init for sigmoid gate
+            shared_alpha_fixed=self.shared_alpha_fixed                 # used only if mode="fixed"
         )
         
         # Layer normalization
         self.token_norm_cross = get_norm_layer(self.norm_type, self.d_model)
         self.memory_norm_cross = get_norm_layer(self.norm_type, self.d_model)
-        
-
         
         # Initialize parameters
         self._init_parameters()
@@ -485,6 +504,11 @@ class MATLModel(nn.Module):
         expert_dropout=None,  # Dropout for experts (uses model dropout if None)
         load_balancing_loss_coef=0.01,  # Coefficient for load balancing loss
         use_swiglu=True,  # Whether to use SwiGLU activation in FFN/experts
+        # DeepSeekMoE (shared expert) additions
+        use_shared_expert=True,
+        shared_gate_mode="learned",
+        shared_gate_init=0.0,
+        shared_alpha_fixed=0.2,
         **kwargs
     ):
         super().__init__()
@@ -508,6 +532,11 @@ class MATLModel(nn.Module):
         self.expert_dropout = expert_dropout
         self.load_balancing_loss_coef = load_balancing_loss_coef
         self.use_swiglu = use_swiglu
+
+        self.use_shared_expert = use_shared_expert
+        self.shared_gate_mode = shared_gate_mode
+        self.shared_gate_init = shared_gate_init
+        self.shared_alpha_fixed = shared_alpha_fixed
         
         # Set up dtype
         dtype_map = {
@@ -586,7 +615,8 @@ class MATLModel(nn.Module):
             dropout, dropatt, pre_lnorm, max_seq_len,
             memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout,
             self.norm_type, self.use_moe, self.num_experts, self.top_k,
-            self.expert_dropout, self.load_balancing_loss_coef, self.use_swiglu
+            self.expert_dropout, self.load_balancing_loss_coef, self.use_swiglu,
+            self.use_shared_expert, self.shared_gate_mode, self.shared_gate_init, self.shared_alpha_fixed
         ) for _ in range(self.num_layers)])
         
         self.drop = nn.Dropout(dropout)
@@ -908,9 +938,14 @@ class MATLModel(nn.Module):
             
             # Count expert parameters specifically
             if hasattr(layer.token_ffn.core_net, 'experts'):
-                expert_params += sum(p.numel() for expert in layer.token_ffn.core_net.experts for p in expert.parameters())
+                expert_params += sum(p.numel() for e in layer.token_ffn.core_net.experts for p in e.parameters())
+                if getattr(layer.token_ffn.core_net, 'shared_expert', None) is not None:
+                    expert_params += sum(p.numel() for p in layer.token_ffn.core_net.shared_expert.parameters())
+
             if hasattr(layer.memory_ffn.core_net, 'experts'):
-                expert_params += sum(p.numel() for expert in layer.memory_ffn.core_net.experts for p in expert.parameters())
+                expert_params += sum(p.numel() for e in layer.memory_ffn.core_net.experts for p in e.parameters())
+                if getattr(layer.memory_ffn.core_net, 'shared_expert', None) is not None:
+                    expert_params += sum(p.numel() for p in layer.memory_ffn.core_net.shared_expert.parameters())
         
         return {
             "moe_enabled": True,

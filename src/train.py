@@ -171,12 +171,18 @@ class ModelConfig:
     # Norm type for MATL (default: "layer")
     norm_type: Optional[str] = None # ["layer"] Norm type: "layer" (layer norm), "rmsnorm" (RMS norm)
     # MoE parameters for MATL
-    use_moe: FlagConversionOff[Optional[bool]] = None # [False] Whether to use Mixture of Experts instead of FFN
-    num_experts: Optional[int] = None # [8] Number of experts in MoE
-    top_k: Optional[int] = None # [2] Number of experts to select per token  
-    expert_dropout: Optional[float] = None # [None] Dropout for experts (uses model dropout if None)
-    load_balancing_loss_coef: Optional[float] = None # [0.01] Coefficient for load balancing loss
-    use_swiglu: FlagConversionOff[Optional[bool]] = None # [True] Whether to use SwiGLU activation in FFN/experts
+    use_moe: FlagConversionOff[Optional[bool]] = None   # [False]
+    num_experts: Optional[int] = None                   # [8] routed experts only
+    top_k: Optional[int] = None                         # [2] TOTAL K (shared consumes 1 when enabled)
+    expert_dropout: Optional[float] = None              # [None]
+    load_balancing_loss_coef: Optional[float] = None    # [0.01]
+    use_swiglu: FlagConversionOff[Optional[bool]] = None# [True]
+
+    # --- DeepSeekMoE (shared expert) additions ---
+    use_shared_expert: FlagConversionOff[Optional[bool]] = None      # [True] enable shared expert. If False, then old MoE; If True, then DeepSeekMoE
+    shared_gate_mode: Optional[str] = None                            # ["learned" | "fixed"]
+    shared_gate_init: Optional[float] = None                          # [0.0] bias for sigmoid gate if "learned"
+    shared_alpha_fixed: Optional[float] = None                        # [0.2] constant alpha if "fixed"
 
 
 @dataclass

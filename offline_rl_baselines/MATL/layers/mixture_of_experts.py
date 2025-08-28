@@ -52,112 +52,115 @@ class Router(nn.Module):
         self.top_k = top_k
         self.linear = nn.Linear(d_model, num_experts, bias=False)
         
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, top_k: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Args:
-            x: [batch_size, seq_len, d_model]
-            
-        Returns:
-            gates: [batch_size, seq_len, top_k] - routing weights
-            indices: [batch_size, seq_len, top_k] - expert indices
+        If top_k is given, override the default self.top_k (useful when reserving 1 slot for the shared expert).
         """
-        # Compute routing logits
-        router_logits = self.linear(x)  # [batch_size, seq_len, num_experts]
-        
-        # Apply softmax to get probabilities
-        router_probs = F.softmax(router_logits, dim=-1)
-        
-        # Select top-k experts
-        gates, indices = torch.topk(router_probs, self.top_k, dim=-1)
-        
-        # Renormalize the selected gates so they sum to 1
+        tk = self.top_k if top_k is None else top_k
+        router_logits = self.linear(x)                       # [B, S, E]
+        router_probs  = F.softmax(router_logits, dim=-1)
+        gates, indices = torch.topk(router_probs, tk, dim=-1)   # [B, S, tk]
         gates = gates / gates.sum(dim=-1, keepdim=True)
-        
         return gates, indices
 
 
 class MixtureOfExperts(nn.Module):
-    """Mixture of Experts module with SwiGLU experts"""
-    
     def __init__(
-        self, 
-        d_model: int, 
-        d_ff: int, 
-        num_experts: int = 8, 
-        top_k: int = 2,
+        self,
+        d_model: int,
+        d_ff: int,
+        num_experts: int = 8,
+        top_k: int = 2,                          # total K you pass from config
         dropout: float = 0.1,
         expert_dropout: float = 0.1,
-        load_balancing_loss_coef: float = 0.01
+        load_balancing_loss_coef: float = 0.01,
+        # --- new ---
+        use_shared_expert: bool = True,          # enable shared expert
+        shared_gate_mode: str = "learned",       # {"learned","fixed"}
+        shared_gate_init: float = 0.0,           # sigmoid(init) ~ 0.5 when 0.0
+        shared_alpha_fixed: float = 0.2          # used when shared_gate_mode=="fixed"
     ):
         super().__init__()
         self.d_model = d_model
-        self.num_experts = num_experts
-        self.top_k = top_k
+        self.num_experts = num_experts           # routed experts only
+        self.top_k_total = top_k                 # includes shared if enabled
         self.load_balancing_loss_coef = load_balancing_loss_coef
-        
-        # Router
-        self.router = Router(d_model, num_experts, top_k)
-        
-        # Experts
+        self.use_shared_expert = use_shared_expert
+        self.shared_gate_mode = shared_gate_mode
+        self.shared_alpha_fixed = shared_alpha_fixed
+
+        # Router over *routed* experts
+        self.router = Router(d_model, num_experts, top_k=max(1, top_k - (1 if use_shared_expert else 0)))
+
+        # Routed experts
+        # self.experts = nn.ModuleList([Expert(d_model, d_ff, expert_dropout) for _ in range(num_experts)])
+        # Routed experts (narrower: d_ff // 4)
         self.experts = nn.ModuleList([
-            Expert(d_model, d_ff, expert_dropout) 
+            Expert(d_model, max(1, d_ff // 4), expert_dropout)   # NEW
             for _ in range(num_experts)
         ])
-        
+
+        # Shared expert + isolated gate
+        if use_shared_expert:
+            self.shared_expert = Expert(d_model, d_ff, expert_dropout)
+            if shared_gate_mode == "learned":
+                self.shared_gate = nn.Linear(d_model, 1, bias=True)
+                with torch.no_grad():
+                    self.shared_gate.bias.fill_(shared_gate_init)
+                    if hasattr(self.shared_gate, "weight"):
+                        nn.init.zeros_(self.shared_gate.weight)
+            else:
+                self.register_parameter("shared_gate", None)
+        else:
+            self.register_parameter("shared_gate", None)
+            self.shared_expert = None
+
         self.dropout = nn.Dropout(dropout)
-        
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+
+    def forward(self, x: torch.Tensor):
         """
-        Args:
-            x: [batch_size, seq_len, d_model]
-            
-        Returns:
-            output: [batch_size, seq_len, d_model]
-            load_balancing_loss: Optional load balancing loss for training
+        x: [B, S, D]
+        returns: y, aux_loss
         """
-        batch_size, seq_len, d_model = x.shape
-        
-        # Get routing decisions
-        gates, indices = self.router(x)  # gates: [B, S, top_k], indices: [B, S, top_k]
-        
-        # Initialize output
-        output = torch.zeros_like(x)
-        
-        # Process each expert
+        B, S, D = x.shape
+        # --- routed experts path ---
+        routed_top_k = max(1, self.router.top_k)   # already reserves 1 slot if shared is on
+        routed_gates, routed_indices = self.router(x, top_k=routed_top_k)  # [B,S,Kr]
+
+        routed_out = torch.zeros_like(x)
         for expert_idx in range(self.num_experts):
-            # Find positions where this expert is selected
-            expert_mask = (indices == expert_idx)  # [B, S, top_k]
-            
+            expert_mask = (routed_indices == expert_idx)            # [B,S,Kr]
             if expert_mask.any():
-                # Get the corresponding gates for this expert
-                expert_gates = gates * expert_mask.float()  # [B, S, top_k]
-                expert_gates = expert_gates.sum(dim=-1, keepdim=True)  # [B, S, 1]
-                
-                # Only process tokens that use this expert
-                tokens_for_expert = expert_gates.squeeze(-1) > 0  # [B, S]
-                
-                if tokens_for_expert.any():
-                    # Extract tokens for this expert
-                    expert_input = x[tokens_for_expert]  # [num_tokens, d_model]
-                    
-                    # Process through expert
-                    expert_output = self.experts[expert_idx](expert_input)  # [num_tokens, d_model]
-                    
-                    # Add weighted expert output back
-                    expert_contribution = torch.zeros_like(x)
-                    expert_contribution[tokens_for_expert] = expert_output
-                    expert_contribution = expert_contribution * expert_gates
-                    
-                    output += expert_contribution
-        
-        output = self.dropout(output)
-        
-        # Calculate load balancing loss for training
-        load_balancing_loss = None
+                # sum gates for this expert (tokens that chose it)
+                expert_g = (routed_gates * expert_mask.float()).sum(dim=-1, keepdim=True)   # [B,S,1]
+                tokens = expert_g.squeeze(-1) > 0                                             # [B,S]
+                if tokens.any():
+                    expert_in  = x[tokens]                                                    # [N,D]
+                    expert_out = self.experts[expert_idx](expert_in)                          # [N,D]
+                    contrib = torch.zeros_like(x)
+                    contrib[tokens] = expert_out
+                    contrib = contrib * expert_g
+                    routed_out += contrib
+
+        # --- shared expert path (isolated) ---
+        if self.use_shared_expert:
+            # all tokens go through the shared expert
+            shared_out = self.shared_expert(x.reshape(-1, D)).reshape(B, S, D)                # [B,S,D]
+            if self.shared_gate_mode == "learned":
+                alpha = torch.sigmoid(self.shared_gate(x))                                    # [B,S,1]
+            else:
+                alpha = torch.full((B, S, 1), self.shared_alpha_fixed, device=x.device, dtype=x.dtype)
+            y = alpha * shared_out + (1.0 - alpha) * routed_out
+        else:
+            y = routed_out
+
+        y = self.dropout(y)
+
+        # load-balancing only across *routed* experts (isolation)
+        aux = None
         if self.training and self.load_balancing_loss_coef > 0:
-            load_balancing_loss = self._calculate_load_balancing_loss(gates, indices)
-        
-        return output, load_balancing_loss
+            aux = self._calculate_load_balancing_loss(routed_gates, routed_indices)
+        return y, aux
     
     def _calculate_load_balancing_loss(self, gates: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
         """Calculate load balancing loss to encourage equal expert usage"""
@@ -188,31 +191,25 @@ class MixtureOfExperts(nn.Module):
 
 
 class MoEFeedForwardNetwork(nn.Module):
-    """MoE-enhanced Feed Forward Network with option to use standard FFN or MoE"""
-    
-    def __init__(
-        self, 
-        d_model: int, 
-        d_ff: int, 
-        dropout: float = 0.1, 
-        pre_lnorm: bool = True, 
-        norm_type: Optional[str] = None,
-        use_moe: bool = False,
-        num_experts: int = 8,
-        top_k: int = 2,
-        expert_dropout: float = 0.1,
-        load_balancing_loss_coef: float = 0.01,
-        use_swiglu: bool = True
+    def __init__(self,
+        d_model: int, d_ff: int, dropout: float = 0.1, pre_lnorm: bool = True,
+        norm_type: Optional[str] = None, use_moe: bool = False,
+        num_experts: int = 8, top_k: int = 2,
+        expert_dropout: float = 0.1, load_balancing_loss_coef: float = 0.01,
+        use_swiglu: bool = True,
+        # --- new (all optional) ---
+        use_shared_expert: bool = True,
+        shared_gate_mode: str = "learned",
+        shared_gate_init: float = 0.0,
+        shared_alpha_fixed: float = 0.2
     ):
         super().__init__()
         self.pre_lnorm = pre_lnorm
         self.use_moe = use_moe
         self.use_swiglu = use_swiglu
-        
         self.layer_norm = get_norm_layer(norm_type, d_model)
-        
+
         if use_moe:
-            # Use Mixture of Experts
             self.core_net = MixtureOfExperts(
                 d_model=d_model,
                 d_ff=d_ff,
@@ -220,7 +217,11 @@ class MoEFeedForwardNetwork(nn.Module):
                 top_k=top_k,
                 dropout=dropout,
                 expert_dropout=expert_dropout,
-                load_balancing_loss_coef=load_balancing_loss_coef
+                load_balancing_loss_coef=load_balancing_loss_coef,
+                use_shared_expert=use_shared_expert,
+                shared_gate_mode=shared_gate_mode,
+                shared_gate_init=shared_gate_init,
+                shared_alpha_fixed=shared_alpha_fixed,
             )
         else:
             # Use standard FFN with optional SwiGLU
