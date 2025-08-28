@@ -9,7 +9,7 @@ python3 src/train.py \
     --model.norm-type=rmsnorm \
     --start-seed=1 \
     --end-seed=1 \
-    --dtype=bfloat16 \
+    --dtype=float32 \
     --data.gamma=1 \
     --data.max-length=None \
     --data.path-to-dataset=None \
@@ -26,7 +26,7 @@ python3 src/train.py \
     --model.use-lru=False \
     --model.lru-blend-alpha=0.5 \
     --model.pre-lnorm=False \
-    --model.pos-type=alibi \
+    --model.pos-type=yarn \
     --model.train-stride=10 \
     --training.context-length=10 \
     --training.sections=3 \
@@ -41,9 +41,9 @@ python3 src/train.py \
     --model.n-layer=6 \
     --model.padding-idx=-10 \
     --model.state-dim=4 \
-    --online-inference.best_checkpoint_metric=Success_rate_x50 \
+    --online-inference.best_checkpoint_metric=Success_rate_x100 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=ffn+gelu+alibi \
+    --text=[new]-moe+yarn+s \
     --training.batch-size=512 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
@@ -60,7 +60,7 @@ python3 src/train.py \
     --training.weight-decay=0.01 \
     --wandb.project-name=MATL-T-Maze \
     --wandb.wwandb=True \
-    --model.use-moe=False \
+    --model.use-moe=True \
     --model.num-experts=8 \
     --model.top-k=2 \
     --model.use-swiglu=False \
@@ -84,3 +84,4 @@ python3 src/train.py \
 # --model.pos-type=rope        # Rotary Position Embedding (RoPE) - works on head_dim
 # --model.pos-type=yarn        # YaRN - Yet another RoPE extensioN (efficient context extension)
 #                              # YaRN provides 4x context extension with proper interpolation/extrapolation
+# --model.pos-type=alibi       # ALiBi - Attention with Linear Biases (train short, test long)

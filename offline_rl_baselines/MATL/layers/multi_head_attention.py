@@ -514,25 +514,25 @@ class ALiBiMultiHeadAttention(nn.Module):
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)  # (B, H, T_q, T_k)
         
         # Apply ALiBi bias if provided
+        # after computing scores
         if alibi_bias is not None:
-            # alibi_bias: [n_heads, seq_len, seq_len]
-            # Expand for batch dimension: [1, n_heads, seq_len, seq_len]
-            alibi_bias_expanded = alibi_bias.unsqueeze(0)  # [1, H, T, T]
-            scores = scores + alibi_bias_expanded
+            # expect shape [1, H, T_q, T_k] – add it directly
+            scores = scores + alibi_bias
         elif alibi_embeddings is not None:
-            # Generate ALiBi bias on the fly
-            seq_len = scores.size(-1)
-            alibi_bias_computed = alibi_embeddings.get_bias(seq_len, scores.device, scores.dtype)
-            alibi_bias_expanded = alibi_bias_computed.unsqueeze(0)  # [1, H, T, T]
-            scores = scores + alibi_bias_expanded
-        
-        # Apply additional mask if provided
+            if query.size(1) == key.size(1):
+                # self-attention
+                alibi_bias = alibi_embeddings.get_bias(scores.size(-1), scores.device, scores.dtype)  # [1,H,T,T]
+            else:
+                # (if you have explicit q_pos/k_pos, call get_bias_from_positions here)
+                alibi_bias = alibi_embeddings.get_bias(key.size(1), scores.device, scores.dtype)      # fallback
+            scores = scores + alibi_bias  # no extra unsqueeze
+
+        # optional extra mask (e.g., padding)
         if mask is not None:
             scores = scores.masked_fill(mask, float('-inf'))
-        
-        # Apply causal mask if requested (ALiBi already includes causal masking)
-        if is_causal and alibi_bias is None and alibi_embeddings is None:
-            # Only apply causal mask if ALiBi is not being used (ALiBi includes causal masking)
+
+        # ALWAYS apply causal mask for autoregressive use
+        if is_causal:
             t_q, t_k = scores.size(-2), scores.size(-1)
             causal_mask = torch.triu(torch.ones(t_q, t_k, dtype=torch.bool, device=scores.device), 1)
             scores = scores.masked_fill(causal_mask, float('-inf'))

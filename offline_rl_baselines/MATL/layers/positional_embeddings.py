@@ -508,8 +508,9 @@ class ALiBiPositionalEmbedding(nn.Module):
                 slopes_power_of_2(2 * closest_power_of_2)[0::2][:n_heads - closest_power_of_2]
             )
         
-        # Return negative slopes for distance penalty (farther = more negative)
-        return torch.tensor(slopes, dtype=torch.float32) * -1.0
+        # keep slopes positive; sign is handled when building the bias
+        return torch.tensor(slopes, dtype=torch.float32)
+
     
     def _build_bias(self, seq_len: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
         """
@@ -526,16 +527,16 @@ class ALiBiPositionalEmbedding(nn.Module):
         # Create position indices
         pos = torch.arange(seq_len, device=device)
         
-        # Compute relative distances: j - i (key position j, query position i)
+        # distance we penalize: (query index - key index) >= 0 for past keys
         # Shape: [seq_len, seq_len]
-        distances = pos[None, :] - pos[:, None]
+        distances = pos[:, None] - pos[None, :] # [T, T]
         
         # Apply slopes to get bias for each head
         # slopes: [n_heads] -> [n_heads, 1, 1]
         # distances: [seq_len, seq_len] -> [1, seq_len, seq_len]
         # Result: [n_heads, seq_len, seq_len]
-        slopes = self.slopes.to(device=device, dtype=dtype)
-        bias = slopes.view(-1, 1, 1) * distances.view(1, seq_len, seq_len)
+        slopes = self.slopes.to(device=device, dtype=dtype)  # POSITIVE slopes
+        bias = -slopes.view(-1, 1, 1) * distances.view(1, seq_len, seq_len)  # [H, T, T]
         
         # Return [1, n_heads, seq_len, seq_len] for easy broadcast with [B, H, T, T]
         return bias.unsqueeze(0)
@@ -599,16 +600,16 @@ class ALiBiPositionalEmbedding(nn.Module):
         q_pos = q_pos.to(device)
         k_pos = k_pos.to(device)
         
-        # Compute relative distances: j - i (key position j, query position i)
+        # penalize (query - key) distance; past keys => positive distance
         # Shape: [T_q, T_k]
-        distances = k_pos[None, :] - q_pos[:, None]
+        distances = q_pos[:, None] - k_pos[None, :]  # [T_q, T_k]
         
         # Apply slopes to get bias for each head
         # slopes: [n_heads] -> [n_heads, 1, 1]
         # distances: [T_q, T_k] -> [1, T_q, T_k]
         # Result: [n_heads, T_q, T_k]
-        slopes = self.slopes.to(device=device, dtype=dtype)
-        bias = slopes.view(-1, 1, 1) * distances.view(1, *distances.shape)
+        slopes = self.slopes.to(device=device, dtype=dtype)  # POSITIVE slopes
+        bias = -slopes.view(-1, 1, 1) * distances.view(1, *distances.shape)
         
         # Return [1, n_heads, T_q, T_k] for easy broadcast with [B, H, T_q, T_k]
         return bias.unsqueeze(0)
