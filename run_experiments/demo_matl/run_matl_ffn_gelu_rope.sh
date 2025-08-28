@@ -43,7 +43,7 @@ python3 src/train.py \
     --model.state-dim=4 \
     --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=ffn+gelu+rope \
+    --text=ffn+gelu+rope-v2 \
     --training.batch-size=512 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
@@ -59,7 +59,7 @@ python3 src/train.py \
     --training.warmup-steps=10000 \
     --training.weight-decay=0.01 \
     --wandb.project-name=MATL-T-Maze \
-    --wandb.wwandb=False \
+    --wandb.wwandb=True \
     --model.use-moe=False \
     --model.num-experts=8 \
     --model.top-k=2 \

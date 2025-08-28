@@ -146,3 +146,4 @@ n_2025.ipynb
 memory_rl_experiments/
 minigrid_memory_val_results/
 run_experiments/old/
+sweep_configs/

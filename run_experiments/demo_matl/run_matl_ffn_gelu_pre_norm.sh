@@ -19,14 +19,14 @@ python3 src/train.py \
     --model.d-model=64 \
     --model.d-ff=512 \
     --model.memory-size=4 \
-    --model.max-seq-len=8192 \
+    --model.max-seq-len=2048 \
     --model.memory-init-std=0.01 \
     --model.detach-memory=True \
     --model.use-causal-self-attn-mask=True \
     --model.use-lru=False \
     --model.lru-blend-alpha=0.5 \
-    --model.pre-lnorm=False \
-    --model.pos-type=yarn \
+    --model.pre-lnorm=True \
+    --model.pos-type=learnable \
     --model.train-stride=10 \
     --training.context-length=10 \
     --training.sections=3 \
@@ -43,7 +43,7 @@ python3 src/train.py \
     --model.state-dim=4 \
     --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=ffn+gelu+yarn \
+    --text=ffn+gelu+pre_norm \
     --training.batch-size=512 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
@@ -76,11 +76,3 @@ python3 src/train.py \
 #
 # MoE with different expert counts:
 # --model.use-moe=True --model.num-experts=16 --model.top-k=2
-#
-# Position encoding options:
-# --model.pos-type=relative    # Transformer-XL style relative positions
-# --model.pos-type=sinusoidal  # Standard sinusoidal embeddings
-# --model.pos-type=learnable   # Learnable absolute positions
-# --model.pos-type=rope        # Rotary Position Embedding (RoPE) - works on head_dim
-# --model.pos-type=yarn        # YaRN - Yet another RoPE extensioN (efficient context extension)
-#                              # YaRN provides 4x context extension with proper interpolation/extrapolation

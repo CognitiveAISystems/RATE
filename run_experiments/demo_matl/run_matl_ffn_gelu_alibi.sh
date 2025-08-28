@@ -59,7 +59,7 @@ python3 src/train.py \
     --training.warmup-steps=10000 \
     --training.weight-decay=0.01 \
     --wandb.project-name=MATL-T-Maze \
-    --wandb.wwandb=False \
+    --wandb.wwandb=True \
     --model.use-moe=False \
     --model.num-experts=8 \
     --model.top-k=2 \

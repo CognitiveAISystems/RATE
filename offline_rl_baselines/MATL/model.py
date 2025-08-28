@@ -430,9 +430,6 @@ class MATLLayer(nn.Module):
             # new_vec - updated memory, where new slots are replaced, others are kept
             # new_pos - updated positions of slots, where new slots are replaced, others are kept
         else:
-            # 2) Shift occupied slots
-            mem_pos = torch.where(~empty, mem_pos + T, mem_pos)
-
             # Simple replacement policy — only the first empty slot
             write_mask = first_empty
             new_vec = torch.where(write_mask.unsqueeze(-1), u_processed, mem_res)
