@@ -20,13 +20,13 @@ python3 src/train.py \
     --model.d-ff=512 \
     --model.memory-size=4 \
     --model.max-seq-len=8192 \
-    --model.memory-init-std=0.01 \
+    --model.memory-init-std=0.1 \
     --model.detach-memory=True \
     --model.use-causal-self-attn-mask=True \
-    --model.use-lru=False \
-    --model.lru-blend-alpha=0.5 \
+    --model.use-lru=True \
+    --model.lru-blend-alpha=0.99 \
     --model.pre-lnorm=False \
-    --model.pos-type=yarn \
+    --model.pos-type=relative \
     --model.train-stride=10 \
     --training.context-length=10 \
     --training.sections=3 \
@@ -41,9 +41,9 @@ python3 src/train.py \
     --model.n-layer=6 \
     --model.padding-idx=-10 \
     --model.state-dim=4 \
-    --online-inference.best_checkpoint_metric=Success_rate_x100 \
+    --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
-    --text=[new]-moe+yarn+s \
+    --text=std-0.1 \
     --training.batch-size=512 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
@@ -59,16 +59,17 @@ python3 src/train.py \
     --training.warmup-steps=10000 \
     --training.weight-decay=0.01 \
     --wandb.project-name=MATL-T-Maze \
-    --wandb.wwandb=True \
+    --wandb.wwandb=False \
     --model.use-moe=True \
-    --model.num-experts=32 \
-    --model.top-k=3 \
+    --model.num-experts=4 \
+    --model.top-k=2 \
     --model.use-shared-expert=True \
-    --model.shared-gate-mode=learned \
-    --model.shared-gate-init=0.0 \
-    --model.shared-alpha-fixed=0.2 \
+    --model.n-shared-experts=1 \
+    --model.shared-d-ff=512 \
+    --model.routed-d-ff=64 \
     --model.use-swiglu=False \
-    --model.load-balancing-loss-coef=0.01
+    --model.load-balancing-loss-coef=0.1
+
 
 # Alternative configurations:
 # 

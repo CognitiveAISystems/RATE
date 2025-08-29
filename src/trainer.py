@@ -194,6 +194,9 @@ class Trainer(BaseTrainer):
         # Move model to specified device and dtype
         self.model.to(device=self.device, dtype=self.dtype)
         
+        # Compile the model for better performance
+        # self.model = torch.compile(self.model) # TODO: torch.compile?
+        
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.config["training"]["learning_rate"],

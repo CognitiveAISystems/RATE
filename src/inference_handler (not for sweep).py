@@ -63,7 +63,7 @@ class InferenceHandler(BaseTrainer):
 
             if "multiple_timeouts" not in self.config["online_inference"]:
                 # Define the list of multipliers to test
-                multipliers = [2]
+                multipliers = [2, 5, 6, 7, 10, 50, 100]
                 
                 for multiplier in multipliers:
                     # inference on corridor_length = train corridor_length * multiplier
@@ -97,38 +97,6 @@ class InferenceHandler(BaseTrainer):
                         self.current_metric_value = episode_return_1x
                     
                     print(f"----- [T: {episode_timeout*multiplier}] | [x{multiplier} length] Success rate: {episode_return} | \n")
-
-            # inference on corridor_length = train corridor_length * multiplier
-            rewards, successes = get_returns_TMaze(
-                model=self.model,
-                ret=1.0,
-                seeds=seeds_list,
-                episode_timeout=9600,
-                corridor_length=9600-2,
-                context_length=self.config["training"]["context_length"],
-                device=self.device,
-                config=self.config,
-                create_video=False,
-            )
-
-            episode_return = sum(rewards)/batch_size
-
-            if self.wwandb:
-                if text is None:
-                    self.log({
-                        f"Success_rate_9600": episode_return,
-                    })
-                else:
-                    self.log({
-                        f"Success_rate_S_{text}_9600": episode_return,
-                    })
-            
-            if self.config["model_mode"] in ["RATE", "MATL"]:
-                self.current_metric_value = episode_return
-            else:
-                self.current_metric_value = episode_return_1x
-            
-            print(f"----- [T: 9600] | [9600 length] Success rate: {episode_return} | \n")
 
     @staticmethod
     def perform_mini_inference_vizdoom(self, episode_timeout, text=None, env=None):
