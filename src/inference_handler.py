@@ -173,7 +173,7 @@ class InferenceHandler(BaseTrainer):
                 return returns, ts
 
             total_returns, total_ts = [], []
-            SKIP_RETURN = 25 # TODO: remove after debug to 4
+            SKIP_RETURN = 4
 
             # RED PILLAR
             seeds_red = reds[::SKIP_RETURN]

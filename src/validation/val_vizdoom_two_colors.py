@@ -142,7 +142,16 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
     hidden = model.reset_hidden(1, device) if is_lstm else None
     memory_states = model.init_memory(1, device) if config["model_mode"] == "MATL" else None
 
+    # Initialize variables that will be used in the loop
+    new_mem_tokens = mem_tokens
+    new_context = saved_context
+    new_memory_states = memory_states
+
     episode_return, episode_length = 0, 0
+    
+    # Debug: Track actions and rewards
+    debug_actions = []
+    debug_rewards = []
     
     for t in range(max_ep_len):
         actions = torch.cat([actions, torch.zeros((1, act_dim), device=device)], dim=0)
@@ -219,6 +228,10 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
 
         actions[-1] = act
         
+        # Debug: Track action probabilities and chosen action
+        if t < 10:  # Only track first 10 steps to avoid spam
+            debug_actions.append((t, action_probs, act))
+        
         state, reward, done, info = env.step(act)
         state = np.float32(state['image'])
         state = state.reshape(1, 1, state.shape[0], state.shape[1], state.shape[2])
@@ -232,11 +245,22 @@ def get_returns_VizDoom(model, ret, seed, episode_timeout, context_length, devic
         episode_return += reward
         episode_length += 1
         
+        # Debug: Track rewards
+        debug_rewards.append((t, reward, episode_return))
+        
         if done:
             break  
         
     if create_video == True:
         print("\n")
+    
+    # Debug: Print debug information
+    print(f"Debug info for seed {seed}:")
+    print(f"  Episode return: {episode_return}")
+    print(f"  Episode length: {episode_length}")
+    print(f"  First 10 actions: {[a[2] for a in debug_actions[:10]]}")
+    print(f"  First 10 action probs: {[a[1] for a in debug_actions[:10]]}")
+    print(f"  First 10 rewards: {[r[1] for r in debug_rewards[:10]]}")
     
     env.close()
     return episode_return, t
