@@ -13,7 +13,7 @@ python3 src/train.py \
     --model.act-dim=5 \
     --model.d-model=64 \
     --model.d-ff=512 \
-    --model.memory-size=4 \
+    --model.memory-size=16 \
     --model.max-seq-len=8192 \
     --model.memory-init-std=0.1 \
     --model.detach-memory=True \
@@ -37,11 +37,12 @@ python3 src/train.py \
     --model.padding-idx=-10 \
     --model.state-dim=3 \
     --online-inference.desired-return-1=56.5 \
+    --online-inference.best_checkpoint_metric=ReturnsMean_56.5 \
     --online-inference.episode-timeout=4200 \
     --online-inference.use-argmax=False \
     --tensorboard-dir=runs/VizDoom/MATL/T_150 \
     --text=std-0.1 \
-    --training.batch-size=16 \
+    --training.batch-size=64 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
     --training.ckpt-epoch=50 \
@@ -49,7 +50,7 @@ python3 src/train.py \
     --training.final-tokens=10000000 \
     --training.grad-norm-clip=1 \
     --training.learning-rate=0.0001 \
-    --training.log-last-segment-loss-only=True \
+    --training.log-last-segment-loss-only=False \
     --training.lr-end-factor=1 \
     --training.online-inference=True \
     --training.use-cosine-decay=False \
@@ -62,7 +63,9 @@ python3 src/train.py \
     --model.top-k=2 \
     --model.use-shared-expert=True \
     --model.n-shared-experts=1 \
-    --model.shared-d-ff=512 \
+    --model.shared-d-ff=256 \
     --model.routed-d-ff=64 \
     --model.use-swiglu=False \
     --model.load-balancing-loss-coef=0.1
+
+# ! log-last-segment-loss-only=False
