@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# MATL Demo Script with MoE Support
+# Supports: Standard FFN, SwiGLU FFN, and MoE with SwiGLU experts
+# Sequence formats: s, sa, sra, sr
+
+# MATL with MoE configuration
+python3 src/train.py \
+    --model.norm-type=rmsnorm \
+    --start-seed=1 \
+    --end-seed=1 \
+    --dtype=float32 \
+    --data.gamma=1 \
+    --data.max-length=None \
+    --data.path-to-dataset=None \
+    --model-mode=MATL \
+    --model.sequence-format=s \
+    --model.act-dim=4 \
+    --model.d-model=64 \
+    --model.d-ff=512 \
+    --model.memory-size=256 \
+    --model.max-seq-len=8192 \
+    --model.memory-init-std=0.01 \
+    --model.detach-memory=True \
+    --model.use-causal-self-attn-mask=True \
+    --model.use-lru=True \
+    --model.lru-blend-alpha=0.99 \
+    --model.pre-lnorm=False \
+    --model.pos-type=relative \
+    --model.train-stride=10 \
+    --training.context-length=10 \
+    --training.sections=3 \
+    --model.dropatt=0.0 \
+    --model.dropout=0.1 \
+    --model.memory-dropout=0.3 \
+    --model.label-smoothing=0.2 \
+    --model.env-name=tmaze \
+    --min-n-final=1 \
+    --max-n-final=3 \
+    --model.n-head=8 \
+    --model.n-layer=6 \
+    --model.padding-idx=-10 \
+    --model.state-dim=4 \
+    --online-inference.best_checkpoint_metric=Success_rate_x50 \
+    --tensorboard-dir=runs/TMaze/MATL/T_30 \
+    --text=moe_s_relative+lru_a0.99+ms256 \
+    --training.batch-size=512 \
+    --training.beta-1=0.95 \
+    --training.beta-2=0.99 \
+    --training.ckpt-epoch=50 \
+    --training.epochs=500 \
+    --training.final-tokens=10000000 \
+    --training.grad-norm-clip=1 \
+    --training.learning-rate=0.0001 \
+    --training.log-last-segment-loss-only=True \
+    --training.lr-end-factor=1 \
+    --training.online-inference=True \
+    --training.use-cosine-decay=False \
+    --training.warmup-steps=10000 \
+    --training.weight-decay=0.01 \
+    --wandb.project-name=MATL-T-Maze \
+    --wandb.wwandb=True \
+    --model.use-moe=True \
+    --model.num-experts=4 \
+    --model.top-k=2 \
+    --model.use-shared-expert=True \
+    --model.n-shared-experts=1 \
+    --model.shared-d-ff=512 \
+    --model.routed-d-ff=64 \
+    --model.use-swiglu=False \
+    --model.load-balancing-loss-coef=0.1
+
+
+# Alternative configurations:
+# 
+# Standard FFN with GELU:
+# --model.use-moe=False --model.use-swiglu=False
+#
+# Standard FFN with SwiGLU:
+# --model.use-moe=False --model.use-swiglu=True
+#
+# MoE with different expert counts:
+# --model.use-moe=True --model.num-experts=16 --model.top-k=2
+#
+# Position encoding options:
+# --model.pos-type=relative    # Transformer-XL style relative positions
+# --model.pos-type=sinusoidal  # Standard sinusoidal embeddings
+# --model.pos-type=learnable   # Learnable absolute positions
+# --model.pos-type=rope        # Rotary Position Embedding (RoPE) - works on head_dim
+# --model.pos-type=yarn        # YaRN - Yet another RoPE extensioN (efficient context extension)
+#                              # YaRN provides 4x context extension with proper interpolation/extrapolation
+# --model.pos-type=alibi       # ALiBi - Attention with Linear Biases (train short, test long)
