@@ -430,9 +430,9 @@ class MATLLayer(nn.Module):
             # 5) Update vectors and positions
             # For LRU we use a convex combination: alpha * new + (1-alpha) * old
             # For writing to an empty slot we use a hard replacement (alpha=1.0)
-            alpha_base = torch.ones_like(mem_res[..., :1])
-            lru_alpha = torch.full_like(alpha_base, self.lru_blend_alpha)
-            alpha = torch.where(lru_one_hot.unsqueeze(-1), lru_alpha, alpha_base)
+            alpha_base = torch.ones_like(mem_res[..., :1]) # [B, M, 1]
+            lru_alpha = torch.full_like(alpha_base, self.lru_blend_alpha) # [B, M, 1]
+            alpha = torch.where(lru_one_hot.unsqueeze(-1), lru_alpha, alpha_base) # [B, M, 1]
             blended = alpha * u_processed + (1.0 - alpha) * mem_res
             new_vec = torch.where(write_mask.unsqueeze(-1), blended, mem_res)
             anchor = tok_pos[0].view(1, 1).expand_as(mem_pos)
