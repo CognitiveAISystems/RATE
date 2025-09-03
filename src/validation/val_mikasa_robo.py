@@ -7,7 +7,11 @@ from collections import defaultdict
 
 
 @torch.no_grad()
-def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, rtgs=None, timestep=None, mem_tokens=1, saved_context=None):
+def sample(
+    model, x, block_size, steps, sample=False, top_k=None, actions=None, 
+    rtgs=None, timestep=None, mem_tokens=1, saved_context=None, hidden=None,
+    memory_states=None, pos_offset=0
+):
     
     model.eval()
     for k in range(steps):
@@ -15,22 +19,30 @@ def sample(model, x, block_size, steps, sample=False, top_k=None, actions=None, 
         if actions is not None:
             actions = actions if actions.size(1) <= block_size else actions[:, -block_size:] # crop context if needed
         rtgs = rtgs if rtgs.size(1) <= block_size else rtgs[:, -block_size:] # crop context if needed
+        
         if saved_context is not None:
-            results = model(x_cond, actions, rtgs,None, timestep, *saved_context, mem_tokens=mem_tokens)
+            results = model(
+                x_cond, actions, rtgs, None, timestep, *saved_context, mem_tokens=mem_tokens, 
+                hidden=hidden, memory_states=memory_states, pos_offset=pos_offset)
         else:
-            results = model(x_cond, actions, rtgs,None, timestep, mem_tokens=mem_tokens) 
+            results = model(
+                x_cond, actions, rtgs, None, timestep, mem_tokens=mem_tokens, 
+                hidden=hidden, memory_states=memory_states, pos_offset=pos_offset)
 
         logits = results['logits'][:,-1,:]
-        memory = results['new_mems']
-        mem_tokens = results['mem_tokens']
+        memory = results.get('new_mems', None)
+        mem_tokens = results.get('mem_tokens', None)
+        hidden = results.get('hidden', None)
+        attn_map = getattr(model, 'attn_map', None)
+        memory_states = results.get('memory_states', None)
         
-        attn_map = model.attn_map
-        
-    return logits, mem_tokens, memory, attn_map
+    return logits, mem_tokens, memory, attn_map, hidden, memory_states
 
 
-def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_length, device, config, 
-                           use_argmax=False, create_video=False):
+def get_returns_MIKASARobo(
+    env, model, ret, seed, episode_timeout, context_length, device, config, 
+    use_argmax=False, create_video=False
+):
 
     set_seed(seed)
     scale = 1
@@ -39,6 +51,13 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
 
     # model = model.cpu()
     # device = torch.device('cpu')
+# Get dtype from config
+    dtype_map = {
+        "float32": torch.float32,
+        "float64": torch.float64,
+        "bfloat16": torch.bfloat16
+    }
+    dtype = dtype_map.get(config["dtype"], torch.float32)  # default to float32 if not specified
     
     # Reset environment and get initial state
     state_0, _ = env.reset(seed=seed)
@@ -49,22 +68,32 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
     state = state.unsqueeze(1)   # envs_numx1x6x128x128
     
     # Initialize episode tracking
-    episode_return = torch.zeros((envs_num), device=device, dtype=torch.float32)
+    episode_return = torch.zeros((envs_num), device=device, dtype=dtype)
     episode_length = 0
     done = False
     HISTORY_LEN = context_length
     
     # Initialize state/action tracking
-    states = state.to(device=device, dtype=torch.float32)
-    actions = torch.zeros((envs_num, 0, config['model']['act_dim']), device=device, dtype=torch.float32)
+    states = state.to(device=device, dtype=dtype)
+    actions = torch.zeros((envs_num, 0, config['model']['act_dim']), device=device, dtype=dtype)
     
     # Initialize return targets and timesteps
-    target_return = torch.ones((envs_num, 1), device=device, dtype=torch.float32) * ret
+    target_return = torch.ones((envs_num, 1), device=device, dtype=dtype) * ret
     timesteps = torch.tensor(0, device=device, dtype=torch.long).reshape(1, 1)
+
+    is_lstm = hasattr(model, 'backbone') and model.backbone in ['lstm', 'gru']
     
     # Initialize memory tracking
     mem_tokens = (model.mem_tokens.repeat(1, envs_num, 1).detach() if model.mem_tokens is not None else None)
     saved_context = None
+    hidden = model.reset_hidden(envs_num, device) if is_lstm else None
+    memory_states = model.init_memory(envs_num, device) if config["model_mode"] == "MATL" else None
+
+    # Initialize variables that will be used in the loop
+    new_mem_tokens = mem_tokens
+    new_context = saved_context
+    new_memory_states = memory_states
+
     segment = 0
     prompt_steps = 0
     
@@ -73,80 +102,68 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
     for t in range(episode_timeout):
         actions = torch.cat([actions, torch.zeros((envs_num, 1, config['model']['act_dim']), device=device)], dim=1)
         
-        if config["model_mode"] not in ['DT', 'DTXL']:
-            # For non-DT models, truncate sequences when they exceed history length
-            if actions.shape[0] > HISTORY_LEN:
-                segment += 1
+        if not is_lstm and actions.shape[1] > context_length:
+            slice_index = -1 if config["model_mode"] not in ['DT', 'DTXL'] else 1
+            actions = actions[:, slice_index:]
+            states = states[:, slice_index:]
+            target_return = target_return[:, slice_index:]
+            timesteps = timesteps[:, slice_index:]
+            if t % context_length == 0:
+                mem_tokens = new_mem_tokens
+                saved_context = new_context
+                if config["model_mode"] == "MATL":
+                    memory_states = new_memory_states
 
-                keep_steps = prompt_steps if prompt_steps > 0 else 1
-
-                actions = actions[:, -keep_steps:, :]
-                states = states[:, -keep_steps:, :, :, :]
-                target_return = target_return[:, -keep_steps:]
-                timesteps = timesteps[:, -keep_steps:]
-                
-                # Update memory tokens periodically
-                if t % context_length == 0 and t > 5:
-                    mem_tokens = new_mem
-                    saved_context = new_notes
-                    
-                    if create_video:
-                        memory_norm = torch.norm(mem_tokens).item() if mem_tokens is not None else None
-                        print(f't: {t}, NEW MEMORY: {memory_norm}')
-                        
-        # DT / DTXL          
+        if is_lstm:
+            states = states[:, -1:, :]
+            act_to_pass = None if t == 0 else actions[-1:].unsqueeze(0)
+            target_return = target_return[:, -1:]#.unsqueeze(-1)
+            timesteps = timesteps[:, -1:]
         else:
-            if actions.shape[0] > HISTORY_LEN:
-                segment += 1
-                
-                keep_steps = prompt_steps if prompt_steps > 0 else 1
-
-                actions = actions[:, -keep_steps:, :]
-                states = states[:, -keep_steps:, :, :, :]
-                target_return = target_return[:, -keep_steps:]
-                timesteps = timesteps[:, -keep_steps:]
-                    
-                # Update memory tokens periodically
-                if t % context_length == 0 and t > 5:
-                    if create_video:
-                        memory_norm = torch.norm(mem_tokens).item() if mem_tokens is not None else None
-                        print(f't: {t}, NEW MEMORY: {memory_norm}')
-                    mem_tokens = new_mem
-                    saved_context = new_notes
-
-        if t==0:
-            act_to_pass = None
-        else:
-            act_to_pass = actions[:, 1:, :]
-            if act_to_pass.shape[1] == 0:
-                act_to_pass = None 
+            states = states
+            act_to_pass = None if t == 0 else actions.unsqueeze(0)[:, 1:, :]
+            target_return = target_return#.unsqueeze(-1)
+            timesteps = timesteps
+            if act_to_pass is not None and act_to_pass.shape[1] == 0:
+                act_to_pass = None
         
         states_norm = states / 255.0
 
-        if config["model_mode"] in ["BC", "CQL", "IQL"]:
-            states_norm = states_norm[:, -1:, :, :, :]
-            act_to_pass = act_to_pass[:, -1:, :] if act_to_pass is not None else None
-            target_return = target_return[:, -1:]
-            timesteps = timesteps[:, -1:]
-            mem_tokens = None
-            saved_context = None
+        # For MATL we use the segment approach as during training
+        if config["model_mode"] == "MATL":
+            # Number of the current segment and position inside the segment
+            segment_idx = t // context_length
+            pos_in_segment = t % context_length
+            # pos_offset corresponds to the beginning of the current segment
+            # Get sequence format multiplier
+            sequence_format = getattr(model, 'sequence_format', 'sra')
+            multiplier = model.get_sequence_length_multiplier()
+            pos_offset_val = segment_idx * context_length * multiplier
+        else:
+            window_len = min(context_length, t + 1)
+            pos_offset_val = (t - window_len + 1) * 3
 
-        sampled_action, new_mem, new_notes, attn_map = sample(
-            model=model,
+        sample_outputs = sample(
+            model=model,  
             x=states_norm,
-            block_size=HISTORY_LEN,
-            steps=1,
-            sample=True,
-            actions=act_to_pass,
-            rtgs=target_return.unsqueeze(-1),
-            timestep=timesteps,
+            block_size=context_length, 
+            steps=1, 
+            sample=True, 
+            actions=act_to_pass, 
+            rtgs=target_return.unsqueeze(-1), 
+            timestep=timesteps, 
             mem_tokens=mem_tokens,
-            saved_context=saved_context
+            saved_context=saved_context,
+            hidden=hidden,
+            memory_states=memory_states,
+            pos_offset=pos_offset_val
         )
-            
-        if new_mem is not None:
-            memories.append(mem_tokens.detach().cpu().numpy())
 
+        sampled_action, new_mem_tokens, new_context, attn_map, new_hidden, new_memory_states = sample_outputs
+
+        if is_lstm:
+            hidden = new_hidden
+            
         act = sampled_action#.detach().cpu().numpy()
         act = act # envs_numx1x8
         
@@ -165,10 +182,10 @@ def get_returns_MIKASARobo(env, model, ret, seed, episode_timeout, context_lengt
                 # v = v.float().mean().item()
                 eval_metrics[k].append(v)
 
-        state = state['rgb'].float().permute(0, 3, 1, 2).to(device)
+        state = state['rgb'].float().permute(0, 3, 1, 2).to(device).to(dtype)
         state = state.unsqueeze(1)   # envs_numx1x6x128x128
         
-        cur_state = state.to(device)
+        cur_state = state.to(device).to(dtype)
         states = torch.cat([states, cur_state], dim=1)
 
         pred_return = target_return[:,-1] - reward
