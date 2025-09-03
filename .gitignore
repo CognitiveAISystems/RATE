@@ -148,5 +148,5 @@ minigrid_memory_val_results/
 run_experiments/old/
 sweep_configs/
 
-validate_tmaze_from_ckpt_batch.py/
+validate_tmaze_from_ckpt_batch.py
 run_jobs/
