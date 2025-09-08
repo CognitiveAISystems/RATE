@@ -44,11 +44,11 @@ python3 src/train.py \
     --online-inference.best_checkpoint_metric=Success_rate_x50 \
     --tensorboard-dir=runs/TMaze/MATL/T_30 \
     --text=moe_s_relative+lru_a0.99+ms16 \
-    --training.batch-size=512 \
+    --training.batch-size=5120 \
     --training.beta-1=0.95 \
     --training.beta-2=0.99 \
     --training.ckpt-epoch=50 \
-    --training.epochs=500 \
+    --training.epochs=50000 \
     --training.final-tokens=10000000 \
     --training.grad-norm-clip=1 \
     --training.learning-rate=0.0001 \
