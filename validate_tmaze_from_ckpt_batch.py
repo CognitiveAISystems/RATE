@@ -23,7 +23,8 @@ def parse_args():
     return parser.parse_args()
 
 
-LIST_OF_EPISODE_LENGTHS = [9, 30, 90, 150, 300, 600, 900, 1200, 2400, 4800, 9600]
+# LIST_OF_EPISODE_LENGTHS = [9, 30, 90, 150, 300, 600, 900, 1200, 2400, 4800, 9600]
+LIST_OF_EPISODE_LENGTHS = [1000000]
 
 
 def validate_model(model_config, ckpt_path, model_name, device):

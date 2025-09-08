@@ -7,7 +7,7 @@ python3 src/train.py \
     --end-seed=1 \
     --dtype=float32 \
     --data.gamma=1 \
-    --data.path-to-dataset="/workspace-SR006.nfs2/echerepanov/datasets/data_mikasa_robo/MIKASA-Robo/unbatched/RememberColor3-v0" \
+    --data.path-to-dataset="/workspace-SR006.nfs2/echerepanov/datasets/data_mikasa_robo/MIKASA-Robo/unbatched/RememberColor9-v0" \
     --model-mode=MATL \
     --model.sequence-format=s \
     --model.state-dim=6 \
@@ -30,7 +30,7 @@ python3 src/train.py \
     --model.dropatt=0.1 \
     --model.memory-dropout=0.3 \
     --model.label-smoothing=0.2 \
-    --model.env-name='mikasa_robo_RememberColor3-v0' \
+    --model.env-name='mikasa_robo_RememberColor9-v0' \
     --model.n-head=2 \
     --model.n-layer=8 \
     --model.padding-idx=None \
@@ -38,8 +38,8 @@ python3 src/train.py \
     --online-inference.episode-timeout=90 \
     --online-inference.desired-return-1=90 \
     --online-inference.best_checkpoint_metric='success_once' \
-    --tensorboard-dir='runs/MIKASA_Robo/RememberColor3-v0' \
-    --text='MATL' \
+    --tensorboard-dir='runs/MIKASA_Robo/RememberColor9-v0' \
+    --text='iclr-2025' \
     --training.batch-size=96 \
     --training.beta-1=0.9 \
     --training.beta-2=0.999 \
