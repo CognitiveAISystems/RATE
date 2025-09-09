@@ -33,9 +33,37 @@ class InferenceHandler(BaseTrainer):
         self.model.eval()
         with torch.no_grad():
             batch_size = len(seeds_list)
+            
+            # inference on corridor_length = train corridor_length
+            rewards, successes = get_returns_TMaze(
+                model=self.model,
+                ret=1.0,
+                seeds=seeds_list,
+                episode_timeout=episode_timeout,
+                corridor_length=corridor_length,
+                context_length=self.config["training"]["context_length"],
+                device=self.device,
+                config=self.config,
+                create_video=False,
+            )
+
+            episode_return = sum(rewards)/batch_size
+            episode_return_1x = episode_return
+
+            if self.wwandb:
+                if text is None:
+                    self.log({
+                        "Success_rate": episode_return,
+                    })
+                else:
+                    self.log({
+                        f"Success_rate_S_{text}": episode_return,
+                    })
+            print(f"\n----- [T: {episode_timeout}] | Success rate: {episode_return} | ")
+
             if "multiple_timeouts" not in self.config["online_inference"]:
                 # Define the list of multipliers to test
-                multipliers = [9, 30, 90, 150, 300, 600, 900, 1200, 2400, 4800, 9600]
+                multipliers = [2]
                 
                 for multiplier in multipliers:
                     # inference on corridor_length = train corridor_length * multiplier
@@ -43,8 +71,8 @@ class InferenceHandler(BaseTrainer):
                         model=self.model,
                         ret=1.0,
                         seeds=seeds_list,
-                        episode_timeout=1*multiplier,
-                        corridor_length=1*multiplier-2,
+                        episode_timeout=episode_timeout*multiplier,
+                        corridor_length=episode_timeout*multiplier-2,
                         context_length=self.config["training"]["context_length"],
                         device=self.device,
                         config=self.config,
@@ -56,20 +84,51 @@ class InferenceHandler(BaseTrainer):
                     if self.wwandb:
                         if text is None:
                             self.log({
-                                f"Success_rate_T_{multiplier}": episode_return,
+                                f"Success_rate_x{multiplier}": episode_return,
                             })
                         else:
                             self.log({
                                 f"Success_rate_S_{text}_x{multiplier}": episode_return,
                             })
                     
-                    if self.config["model_mode"] in ["RATE", "MATL"]:
+                    if self.config["model_mode"] in ["RATE"]:
                         self.current_metric_value = episode_return
                     else:
-                        # self.current_metric_value = episode_return_1x
-                        self.current_metric_value = episode_return
+                        self.current_metric_value = episode_return_1x
                     
-                    print(f"----- [T: {1*multiplier}] | Success rate: {episode_return} | \n")
+                    print(f"----- [T: {episode_timeout*multiplier}] | [x{multiplier} length] Success rate: {episode_return} | \n")
+
+            # inference on corridor_length = train corridor_length * multiplier
+            rewards, successes = get_returns_TMaze(
+                model=self.model,
+                ret=1.0,
+                seeds=seeds_list,
+                episode_timeout=9600,
+                corridor_length=9600-2,
+                context_length=self.config["training"]["context_length"],
+                device=self.device,
+                config=self.config,
+                create_video=False,
+            )
+
+            episode_return = sum(rewards)/batch_size
+
+            if self.wwandb:
+                if text is None:
+                    self.log({
+                        f"Success_rate_9600": episode_return,
+                    })
+                else:
+                    self.log({
+                        f"Success_rate_S_{text}_9600": episode_return,
+                    })
+            
+            if self.config["model_mode"] in ["RATE", "MATL"]:
+                self.current_metric_value = episode_return
+            else:
+                self.current_metric_value = episode_return_1x
+            
+            print(f"----- [T: 9600] | [9600 length] Success rate: {episode_return} | \n")
 
     @staticmethod
     def perform_mini_inference_vizdoom(self, episode_timeout, text=None, env=None):
