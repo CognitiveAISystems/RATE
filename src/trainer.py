@@ -217,6 +217,17 @@ class Trainer(BaseTrainer):
         print(f"Model dtype: {self.dtype}")
         if self.config["model_mode"] == "MATL":
             print(f"MATL sequence format: {getattr(self.model, 'sequence_format', 'sra')}")
+            
+            # Print memory statistics
+            memory_stats = self.model.get_memory_stats()
+            print(f"Memory sharing mode: {memory_stats['memory_sharing_mode']}")
+            print(f"Memory slots per layer: {memory_stats['memory_size']}")
+            print(f"Total memory slots: {memory_stats['total_memory_slots']}")
+            if memory_stats['use_shared_memory']:
+                print("Using shared memory across all layers")
+            else:
+                print("Using layer-local memory (independent per layer)")
+            
             # Print MoE statistics if available
             moe_stats = self.model.get_moe_stats()
             if moe_stats["moe_enabled"]:

@@ -185,6 +185,9 @@ class ModelConfig:
     shared_d_ff: Optional[int] = None                            # defaults to d_ff if None
     routed_d_ff: Optional[int] = None                            # defaults to d_ff if None
     # keep combine identical to DeepSeek-v3 (sum); remove alpha- gating
+    
+    # Memory sharing across layers for MATL
+    use_shared_memory: FlagConversionOff[Optional[bool]] = None  # [False] Whether to use single memory matrix for all MATL layers
 
 # --model.num-experts=8       # total routed experts
 # --model.top-k=2             # total experts per token (shared + routed)

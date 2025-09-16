@@ -501,6 +501,8 @@ class MATLModel(nn.Module):
         n_shared_experts=1,
         shared_d_ff=None,
         routed_d_ff=None,
+        # Memory sharing across layers
+        use_shared_memory=False,  # Whether to use a single memory matrix across all layers
         **kwargs
     ):
         super().__init__()
@@ -529,6 +531,9 @@ class MATLModel(nn.Module):
         self.n_shared_experts = n_shared_experts or 1
         self.shared_d_ff = shared_d_ff
         self.routed_d_ff = routed_d_ff
+        
+        # Memory sharing configuration
+        self.use_shared_memory = use_shared_memory
         
         # Set up dtype
         dtype_map = {
@@ -630,8 +635,18 @@ class MATLModel(nn.Module):
             nn.init.normal_(self.r_r_bias, std=0.02)
         
     def init_memory(self, batch_size: int, device: torch.device) -> List[MemoryState]:
-        # Initialize memory with the model's dtype
-        return [layer.init_memory(batch_size, device) for layer in self.layers]
+        """Initialize memory states for all layers.
+        
+        If use_shared_memory is True, all layers share the same memory state.
+        If use_shared_memory is False, each layer has its own independent memory state.
+        """
+        if self.use_shared_memory:
+            # Create a single shared memory state for all layers
+            shared_memory = self.layers[0].init_memory(batch_size, device)
+            return [shared_memory for _ in self.layers]
+        else:
+            # Initialize separate memory for each layer (original behavior)
+            return [layer.init_memory(batch_size, device) for layer in self.layers]
     
     def encode_actions(self, actions):
         """Encode actions using the action encoder."""
@@ -882,9 +897,19 @@ class MATLModel(nn.Module):
         total_aux_loss = None
         layer_aux_losses = []
         
+        # Handle shared vs layer-local memory
+        if self.use_shared_memory:
+            # For shared memory, start with the shared memory state
+            current_shared_memory = memory_states[0]
+        
         for i, layer in enumerate(self.layers):
             # Memory detaching is handled in the trainer, not here
-            layer_memory = memory_states[i]
+            if self.use_shared_memory:
+                # Use the current shared memory state for all layers
+                layer_memory = current_shared_memory
+            else:
+                # Use layer-specific memory
+                layer_memory = memory_states[i]
             
             core_out, updated_mem, layer_aux_loss = layer(
                 core_out,             # [T, B, D]
@@ -896,7 +921,15 @@ class MATLModel(nn.Module):
                 attn_mask,
                 pos_embeddings        # RoPE/YaRN embeddings for attention
             )
-            updated_memory_states.append(updated_mem)
+            
+            if self.use_shared_memory:
+                # Update the shared memory state for the next layer
+                current_shared_memory = updated_mem
+                # All layers get the same updated memory state
+                updated_memory_states.append(updated_mem)
+            else:
+                # Each layer gets its own updated memory state
+                updated_memory_states.append(updated_mem)
             
             # Collect auxiliary losses from MoE
             if layer_aux_loss is not None:
@@ -923,6 +956,16 @@ class MATLModel(nn.Module):
         }
         
         return output
+    
+    def get_memory_stats(self) -> dict:
+        """Get memory usage statistics and configuration info"""
+        return {
+            "use_shared_memory": self.use_shared_memory,
+            "memory_size": self.memory_size,
+            "num_layers": self.num_layers,
+            "total_memory_slots": self.memory_size if self.use_shared_memory else self.memory_size * self.num_layers,
+            "memory_sharing_mode": "shared" if self.use_shared_memory else "layer-local"
+        }
     
     def get_moe_stats(self) -> dict:
         """Get MoE usage statistics and parameter counts"""
