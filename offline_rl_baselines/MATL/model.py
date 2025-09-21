@@ -76,6 +76,11 @@ class MATLLayer(nn.Module):
         n_shared_experts=1,
         shared_d_ff=None,
         routed_d_ff=None,
+        # Relative bias for cross-attention
+        use_relative_bias=True,
+        # Cross-attention control for ablation studies
+        use_tok2mem=True,
+        use_mem2tok=True,
     ):
         super().__init__()
         
@@ -101,6 +106,9 @@ class MATLLayer(nn.Module):
         self.n_shared_experts = n_shared_experts
         self.shared_d_ff = shared_d_ff
         self.routed_d_ff = routed_d_ff
+        self.use_relative_bias = use_relative_bias
+        self.use_tok2mem = use_tok2mem
+        self.use_mem2tok = use_mem2tok
         
         # --- Use appropriate attention for the pos_encoding type ---
         # The self-attention mechanism must be chosen based on the positional encoding strategy.
@@ -150,8 +158,11 @@ class MATLLayer(nn.Module):
             self.d_model, self.num_heads, dropout=dropout, attn_dropout=dropatt
         )
         
-        # Relative bias for cross-attention
-        self.cross_rel_bias = RelativeBias(self.num_heads, max_seq_len)
+        # Relative bias for cross-attention (conditional initialization)
+        if self.use_relative_bias:
+            self.cross_rel_bias = RelativeBias(self.num_heads, max_seq_len)
+        else:
+            self.cross_rel_bias = None
         
         # Feed-forward networks - use MoE if enabled
         self.token_ffn = MoEFeedForwardNetwork(
@@ -346,23 +357,26 @@ class MATLLayer(nn.Module):
 
             h = self._apply_sublayer(h, self.self_attn_norm, self_attn_fn, self.pre_lnorm)
 
-        # Memory fusion — tokens learn from memory via cross-attention (consistent LN)
-        # --- compute rel-bias for read ---
-        # tok_pos: [T], mem_pos: [B, M]
-        # rel_read encodes per-head bias for distances Δ = tok_pos − mem_pos
-        rel_read = self.cross_rel_bias(tok_pos, mem_pos)    # [B, T, M, H]
+        # Memory fusion — tokens learn from memory via cross-attention (conditional)
+        if self.use_tok2mem:
+            # --- compute rel-bias for read (conditional) ---
+            # tok_pos: [T], mem_pos: [B, M]
+            # rel_read encodes per-head bias for distances Δ = tok_pos − mem_pos
+            rel_read = None
+            if self.use_relative_bias and self.cross_rel_bias is not None:
+                rel_read = self.cross_rel_bias(tok_pos, mem_pos)    # [B, T, M, H]
 
-        def token_reads_from_memory(x_tokens: torch.Tensor) -> torch.Tensor:
-            r_local = self.cross_attention1(
-                x_tokens.transpose(0, 1),  # Q: [B, T, D]
-                mem_vec,                   # K,V: [B, M, D]
-                mem_vec,
-                is_causal=False,
-                rel_bias=rel_read
-            )
-            return r_local.transpose(0, 1)
+            def token_reads_from_memory(x_tokens: torch.Tensor) -> torch.Tensor:
+                r_local = self.cross_attention1(
+                    x_tokens.transpose(0, 1),  # Q: [B, T, D]
+                    mem_vec,                   # K,V: [B, M, D]
+                    mem_vec,
+                    is_causal=False,
+                    rel_bias=rel_read
+                )
+                return r_local.transpose(0, 1)
 
-        h = self._apply_sublayer(h, self.token_norm_cross, token_reads_from_memory, self.pre_lnorm)
+            h = self._apply_sublayer(h, self.token_norm_cross, token_reads_from_memory, self.pre_lnorm)
         
         # Token FFN (handles its own norm and residual)
         h, token_aux_loss = self.token_ffn(h)
@@ -385,24 +399,31 @@ class MATLLayer(nn.Module):
         #     )
         #     return u_attn_local
 
-        # Memory cross-attention — memory learns from tokens (consistent LN)
-        # --- compute rel-bias for write (memory as Q, tokens as K) ---
-        # For mem→tok we need distances (mem_pos − tok_pos).
-        rel_write = self.cross_rel_bias.mem_to_tok(mem_pos, tok_pos)  # [B, H, M, T]
+        # Memory cross-attention — memory learns from tokens (conditional)
+        if self.use_mem2tok:
+            # --- compute rel-bias for write (memory as Q, tokens as K) (conditional) ---
+            # For mem→tok we need distances (mem_pos − tok_pos).
+            rel_write = None
+            if self.use_relative_bias and self.cross_rel_bias is not None:
+                rel_write = self.cross_rel_bias.mem_to_tok(mem_pos, tok_pos)  # [B, H, M, T]
 
-        def memory_writes_from_tokens(m_memory: torch.Tensor) -> torch.Tensor:
-            u_attn_local = self.cross_attention2(
-                m_memory,                  # Q: [B, M, D]
-                h.transpose(0, 1),        # K: [B, T, D]
-                h.transpose(0, 1),        # V: [B, T, D]
-                is_causal=False,
-                rel_bias=rel_write
-            )
-            return u_attn_local
+            def memory_writes_from_tokens(m_memory: torch.Tensor) -> torch.Tensor:
+                u_attn_local = self.cross_attention2(
+                    m_memory,                  # Q: [B, M, D]
+                    h.transpose(0, 1),        # K: [B, T, D]
+                    h.transpose(0, 1),        # V: [B, T, D]
+                    is_causal=False,
+                    rel_bias=rel_write
+                )
+                return u_attn_local
 
-        u = self._apply_sublayer(mem_vec, self.memory_norm_cross, memory_writes_from_tokens, self.pre_lnorm)
+            u = self._apply_sublayer(mem_vec, self.memory_norm_cross, memory_writes_from_tokens, self.pre_lnorm)
 
-        u_processed, memory_aux_loss = self.memory_ffn(u)
+            u_processed, memory_aux_loss = self.memory_ffn(u)
+        else:
+            # If mem2tok is disabled, skip memory update and keep original memory
+            u_processed = mem_vec
+            memory_aux_loss = None
         # Apply dropout to memory updates for regularization on long sequences
         if self.training:
             u_processed = F.dropout(u_processed, p=self.memory_dropout, training=True)
@@ -441,11 +462,10 @@ class MATLLayer(nn.Module):
             # new_vec - updated memory, where new slots are replaced, others are kept
             # new_pos - updated positions of slots, where new slots are replaced, others are kept
         else:
-            # Simple replacement policy — only the first empty slot
-            write_mask = first_empty
-            new_vec = torch.where(write_mask.unsqueeze(-1), u_processed, mem_res)
-            anchor = tok_pos[0].view(1, 1).expand_as(mem_pos)
-            new_pos = torch.where(write_mask, anchor, mem_pos)
+            # Simple replacement policy without LRU: just replace old memory with new processed memory
+            # No slot-based replacement, just direct replacement
+            new_vec = u_processed  # Direct replacement of all memory with processed memory
+            new_pos = mem_pos      # Keep the same positions (no position updates)
         
         new_memory_state = MemoryState(new_vec, new_pos)
         
@@ -503,6 +523,11 @@ class MATLModel(nn.Module):
         routed_d_ff=None,
         # Memory sharing across layers
         use_shared_memory=False,  # Whether to use a single memory matrix across all layers
+        # Relative bias for cross-attention
+        use_relative_bias=True,  # Whether to use relative positional bias in cross-attention
+        # Cross-attention control for ablation studies
+        use_tok2mem=True,  # Whether to use token-to-memory cross-attention (tokens read from memory)
+        use_mem2tok=True,  # Whether to use memory-to-token cross-attention (memory writes from tokens)
         **kwargs
     ):
         super().__init__()
@@ -534,6 +559,13 @@ class MATLModel(nn.Module):
         
         # Memory sharing configuration
         self.use_shared_memory = use_shared_memory
+        
+        # Relative bias configuration
+        self.use_relative_bias = use_relative_bias
+        
+        # Cross-attention configuration
+        self.use_tok2mem = use_tok2mem
+        self.use_mem2tok = use_mem2tok
         
         # Set up dtype
         dtype_map = {
@@ -623,7 +655,12 @@ class MATLModel(nn.Module):
             use_shared_expert=self.use_shared_expert,
             n_shared_experts=self.n_shared_experts,
             shared_d_ff=self.shared_d_ff,
-            routed_d_ff=self.routed_d_ff
+            routed_d_ff=self.routed_d_ff,
+            # Relative bias
+            use_relative_bias=self.use_relative_bias,
+            # Cross-attention control
+            use_tok2mem=self.use_tok2mem,
+            use_mem2tok=self.use_mem2tok
         ) for _ in range(self.num_layers)])
         
         self.drop = nn.Dropout(dropout)
@@ -964,7 +1001,12 @@ class MATLModel(nn.Module):
             "memory_size": self.memory_size,
             "num_layers": self.num_layers,
             "total_memory_slots": self.memory_size if self.use_shared_memory else self.memory_size * self.num_layers,
-            "memory_sharing_mode": "shared" if self.use_shared_memory else "layer-local"
+            "memory_sharing_mode": "shared" if self.use_shared_memory else "layer-local",
+            "use_relative_bias": self.use_relative_bias,
+            "use_tok2mem": self.use_tok2mem,
+            "use_mem2tok": self.use_mem2tok,
+            "use_lru": self.use_lru,
+            "lru_blend_alpha": self.lru_blend_alpha
         }
     
     def get_moe_stats(self) -> dict:

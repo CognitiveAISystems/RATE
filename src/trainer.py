@@ -227,6 +227,15 @@ class Trainer(BaseTrainer):
                 print("Using shared memory across all layers")
             else:
                 print("Using layer-local memory (independent per layer)")
+            print(f"Relative bias enabled: {memory_stats.get('use_relative_bias', 'N/A')}")
+            print(f"Token-to-memory cross-attention (tok2mem): {memory_stats.get('use_tok2mem', 'N/A')}")
+            print(f"Memory-to-token cross-attention (mem2tok): {memory_stats.get('use_mem2tok', 'N/A')}")
+            lru_enabled = memory_stats.get('use_lru', 'N/A')
+            print(f"LRU replacement policy: {lru_enabled}")
+            if lru_enabled:
+                print(f"LRU blend alpha: {memory_stats.get('lru_blend_alpha', 'N/A')}")
+            else:
+                print("Using direct memory replacement (no slot-based replacement)")
             
             # Print MoE statistics if available
             moe_stats = self.model.get_moe_stats()

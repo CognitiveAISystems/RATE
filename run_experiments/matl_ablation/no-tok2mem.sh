@@ -1,0 +1,12 @@
+#!/bin/bash
+
+echo "GPU Info:"
+nvidia-smi || echo "nvidia-smi not available"
+# pip install -e .
+# pip install wandb==0.18.5
+# Run the main script
+# * config 1
+python src/train.py --model.use-tok2mem=False --model.use-relative-bias=True --model.use-shared-memory=False --model.norm-type=layer --data.gamma=1 --data.max-length=None --data.path-to-dataset=None --dtype=float32 --end-seed=1 --max-n-final=3 --min-n-final=1 --model-mode=MATL --model.act-dim=4 --model.d-ff=128 --model.d-model=128 --model.detach-memory=True --model.dropatt=0.17341566873977313 --model.dropout=0.10265652155732331 --model.env-name=tmaze --model.label-smoothing=0.16138343262244167 --model.load-balancing-loss-coef=0.1 --model.lru-blend-alpha=0.7866227938963306 --model.max-seq-len=1024 --model.memory-dropout=0.009710101320468444 --model.memory-init-std=0.001 --model.memory-size=2 --model.n-head=2 --model.n-layer=2 --model.n-shared-experts=2 --model.num-experts=2 --model.padding-idx=-10 --model.pos-type=relative --model.pre-lnorm=False --model.routed-d-ff=32 --model.sequence-format=s --model.shared-d-ff=512 --model.state-dim=4 --model.top-k=3 --model.use-causal-self-attn-mask=True --model.use-lru=True --model.use-moe=True --model.use-shared-expert=True --model.use-swiglu=False --online-inference.best_checkpoint_metric=Success_rate_T_9600 --start-seed=1 --tensorboard-dir=runs/TMaze/iclr-2025-ablations/MATL/norm_type --text=use-shared-memory=False --training.batch-size=128 --training.beta-1=0.95 --training.beta-2=0.999 --training.ckpt-epoch=200 --training.context-length=10 --training.epochs=1000 --training.final-tokens=10000000 --training.grad-norm-clip=5 --training.learning-rate=0.00020593014676994752 --training.log-last-segment-loss-only=True --training.lr-end-factor=1 --training.online-inference=True --training.sections=3 --training.use-cosine-decay=True --training.warmup-steps=10000 --training.weight-decay=0.0001 --wandb.project-name=MATL-T-Maze-Ablations --wandb.wwandb=False; 
+
+
+# wait

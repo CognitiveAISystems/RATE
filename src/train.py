@@ -188,6 +188,11 @@ class ModelConfig:
     
     # Memory sharing across layers for MATL
     use_shared_memory: FlagConversionOff[Optional[bool]] = None  # [False] Whether to use single memory matrix for all MATL layers
+    # Relative bias for cross-attention in MATL
+    use_relative_bias: FlagConversionOff[Optional[bool]] = None  # [True] Whether to use relative positional bias in cross-attention
+    # Cross-attention control for MATL ablation studies
+    use_tok2mem: FlagConversionOff[Optional[bool]] = None  # [True] Whether to use token-to-memory cross-attention (tokens read from memory)
+    use_mem2tok: FlagConversionOff[Optional[bool]] = None  # [True] Whether to use memory-to-token cross-attention (memory writes from tokens)
 
 # --model.num-experts=8       # total routed experts
 # --model.top-k=2             # total experts per token (shared + routed)
