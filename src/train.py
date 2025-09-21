@@ -250,6 +250,7 @@ class Config:
     randomize_pairs: Optional[bool] = None
     include_pass_token: Optional[bool] = None 
     num_episodes: Optional[int] = None
+    max_vocab_size: Optional[int] = None
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 
 # ARShot Environment Training Script for RATE
 # This script trains RATE model on the ARShot associative retrieval task
+    # --model.state-dim 3849 \
+    # --model.act-dim 3849 \
 
 python src/train.py \
     --wandb.project-name "RATE-ARShot" \
@@ -9,12 +11,13 @@ python src/train.py \
     \
     --model.env-name "arshot" \
     --n-pairs 6 \
-    --shot-mode "after_pairs" \
+    --shot-mode "after_any_colon" \
     --deterministic-vocab True \
     --full-universe-vocab True \
     --randomize-pairs True \
     --include-pass-token True \
-    --num-episodes 1000 \
+    --num-episodes 100 \
+    --max-vocab-size 20 \
     \
     --model.state-dim 3849 \
     --model.act-dim 3849 \
@@ -45,8 +48,8 @@ python src/train.py \
     --training.warmup-steps 10000 \
     --training.final-tokens 10000000 \
     --training.grad-norm-clip 1.0 \
-    --training.epochs 50 \
-    --training.ckpt-epoch 5 \
+    --training.epochs 100 \
+    --training.ckpt-epoch 10 \
     --training.online-inference True \
     --training.log-last-segment-loss-only False \
     --training.use-cosine-decay True \

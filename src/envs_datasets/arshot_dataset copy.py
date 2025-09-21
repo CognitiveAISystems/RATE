@@ -40,7 +40,7 @@ class ARShotDataset(Dataset):
         
         Episodes are padded to max_length if shorter than max_length.
         Padding uses special values:
-        - Actions are padded with 'pass'
+        - Actions are padded with -10 (special padding index)
         - Rewards are padded with 0.0
         - Done flags are padded with False
     """
@@ -142,10 +142,11 @@ class ARShotDataset(Dataset):
                 # Pad observations with 'pass'
                 episode_data['obs'].extend(['pass'] * pad_length)
                 
-                # Pad actions with 'pass' (but we need one less action than observations)
+                # Pad actions with -10 (but we need one less action than observations)
                 if len(episode_data['action']) < self.max_length:
                     action_pad_length = self.max_length - len(episode_data['action'])
-                    episode_data['action'].extend(['pass'] * action_pad_length)
+                    # episode_data['action'].extend(['pass'] * action_pad_length)
+                    episode_data['action'].extend([-10] * action_pad_length)
                 
                 # Pad rewards and dones
                 episode_data['reward'].extend([0.0] * pad_length)
@@ -207,8 +208,15 @@ class ARShotDataset(Dataset):
         # Convert tokens to indices using the reference environment
         obs_indices = [self.env.token_to_id.get(token, self.env.token_to_id['pass']) 
                       for token in episode['obs']]
-        action_indices = [self.env.token_to_id.get(token, self.env.token_to_id['pass']) 
-                         for token in episode['action']]
+        # action_indices = [self.env.token_to_id.get(token, self.env.token_to_id['pass']) 
+        #                  for token in episode['action']]
+        # Handle action indices, with -10 as padding
+        action_indices = []
+        for token in episode['action']:
+            if token == -10:
+                action_indices.append(-10)  # Keep padding value as -10
+            else:
+                action_indices.append(self.env.token_to_id.get(token, self.env.token_to_id['pass']))
         
         # Convert to tensors
         s = torch.tensor(obs_indices, dtype=torch.long)

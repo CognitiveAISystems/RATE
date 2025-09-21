@@ -106,7 +106,7 @@ def get_returns_ARShot(
 
     # Create environments
     envs = []
-    for i in range(batch_size):
+    for i in tqdm(range(batch_size), desc=f"Creating environments (n_pairs={n_pairs}, mode={shot_mode})"):
         env = ARShotEnv(
             n_pairs=n_pairs,
             shot_mode=shot_mode,

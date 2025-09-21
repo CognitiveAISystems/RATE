@@ -69,9 +69,6 @@ class ARShotEnv(gym.Env):
         full_universe_vocab: bool = True,
         randomize_pairs: bool = True,
         include_pass_token: bool = False,
-        
-        # vocabulary size limitation
-        max_vocab_size: Optional[int] = None,  # limit total vocabulary size (excluding special tokens)
     ):
         super().__init__()
 
@@ -152,40 +149,28 @@ class ARShotEnv(gym.Env):
             if deterministic_vocab:
                 key_universe = det_tokens_for_range(key_token_len_range)
                 val_universe = det_tokens_for_range(value_token_len_range)
-                
-                # Apply vocabulary size limitation to universe first
-                if max_vocab_size is not None:
-                    # Combine universes and limit them
-                    combined_universe = key_universe + [t for t in val_universe if t not in set(key_universe)]
-                    if len(combined_universe) > max_vocab_size:
-                        combined_universe = combined_universe[:max_vocab_size]
-                        # print(f"Token universe limited from {len(key_universe) + len([t for t in val_universe if t not in set(key_universe)])} to {max_vocab_size} tokens")
-                    
-                    # Split back into keys and values
-                    key_universe = [t for t in combined_universe if t in key_universe]
-                    val_universe = [t for t in combined_universe if t in val_universe]
 
                 if randomize_pairs:
-                    # randomly select pairs (but from limited universe)
+                    # randomly select pairs (but from fixed universe)
                     if len(key_universe) < n_pairs:
-                        raise ValueError(f"Not enough deterministic key tokens after limitation. Have {len(key_universe)}, need {n_pairs}")
+                        raise ValueError("Not enough deterministic tokens for keys.")
                     keys_vocab = self.rng.sample(key_universe, n_pairs)
 
                     key_set = set(keys_vocab)
                     val_candidates = [t for t in val_universe if t not in key_set]
                     if len(val_candidates) < n_pairs:
-                        raise ValueError(f"Not enough deterministic value tokens after excluding keys. Have {len(val_candidates)}, need {n_pairs}")
+                        raise ValueError("Not enough deterministic tokens for values after excluding keys.")
                     values_vocab = self.rng.sample(val_candidates, n_pairs)
                 else:
                     # take first n_pairs (fixed; pairs not randomized)
                     if len(key_universe) < n_pairs:
-                        raise ValueError(f"Not enough deterministic key tokens after limitation. Have {len(key_universe)}, need {n_pairs}")
+                        raise ValueError("Not enough deterministic tokens for keys.")
                     keys_vocab = key_universe[:n_pairs]
 
                     key_set = set(keys_vocab)
                     val_candidates = [t for t in val_universe if t not in key_set]
                     if len(val_candidates) < n_pairs:
-                        raise ValueError(f"Not enough deterministic value tokens after excluding keys. Have {len(val_candidates)}, need {n_pairs}")
+                        raise ValueError("Not enough deterministic tokens for values after excluding keys.")
                     values_vocab = val_candidates[:n_pairs]
             else:
                 # completely random vocabularies (not fixed universe/order)
@@ -208,32 +193,16 @@ class ARShotEnv(gym.Env):
         self.keys_vocab = list(keys_vocab)
         self.values_vocab = list(values_vocab)
 
-        # ---- build env.vocab (observation/action space) ---- 
+        # ---- build env.vocab (observation/action space) ----
         if deterministic_vocab and full_universe_vocab:
-            # For full universe vocab, use the already limited universes
-            if max_vocab_size is not None:
-                # Universe was already limited during keys/values selection
-                U_keys = det_tokens_for_range(key_token_len_range)
-                U_vals = det_tokens_for_range(value_token_len_range)
-                universe = U_keys + [t for t in U_vals if t not in set(U_keys)]
-                universe = universe[:max_vocab_size]  # Apply same limitation as before
-            else:
-                U_keys = det_tokens_for_range(key_token_len_range)
-                U_vals = det_tokens_for_range(value_token_len_range)
-                universe = U_keys + [t for t in U_vals if t not in set(U_keys)]
-            
+            U_keys = det_tokens_for_range(key_token_len_range)
+            U_vals = det_tokens_for_range(value_token_len_range)
+            # combine in stable order: first U_keys, then add from U_vals everything not in U_keys
+            universe = U_keys + [t for t in U_vals if t not in set(U_keys)]
             self.vocab = self.SPECIAL + universe
         else:
             # compact vocabulary: only special + selected keys/values
-            universe = self.keys_vocab + self.values_vocab
-            unique_universe = []
-            seen = set()
-            for token in universe:
-                if token not in seen:
-                    unique_universe.append(token)
-                    seen.add(token)
-            
-            self.vocab = self.SPECIAL + unique_universe
+            self.vocab = self.SPECIAL + self.keys_vocab + self.values_vocab
 
         self.token_to_id = {tok: i for i, tok in enumerate(self.vocab)}
         self.id_to_token = {i: tok for tok, i in self.token_to_id.items()}

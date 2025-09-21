@@ -246,7 +246,8 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
             deterministic_vocab=config["deterministic_vocab"],
             full_universe_vocab=config["full_universe_vocab"],
             randomize_pairs=config["randomize_pairs"],
-            include_pass_token=config["include_pass_token"]
+            include_pass_token=config["include_pass_token"],
+            max_vocab_size=config["max_vocab_size"]
         )
         
         train_dataloader = DataLoader(

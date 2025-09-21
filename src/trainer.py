@@ -175,7 +175,8 @@ class Trainer(BaseTrainer):
                 deterministic_vocab=self.config["deterministic_vocab"],
                 full_universe_vocab=self.config["full_universe_vocab"],
                 randomize_pairs=self.config["randomize_pairs"],
-                include_pass_token=self.config["include_pass_token"]
+                include_pass_token=self.config["include_pass_token"],
+                max_vocab_size=self.config["max_vocab_size"]
             )
             vocab_size = len(temp_env.vocab)
             
