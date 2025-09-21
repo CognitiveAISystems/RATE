@@ -151,3 +151,6 @@ sweep_configs/
 validate_tmaze_from_ckpt_batch.py
 run_jobs/
 src/additional/gen_mdp_data/*
+test_arshot_integration.py
+test-mdp.ipynb
+ass-ret.ipynb
