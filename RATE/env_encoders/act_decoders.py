@@ -42,5 +42,9 @@ class ActDecoder(nn.Module):
                 nn.Linear(d_embed, act_dim), 
                 nn.Tanh(),
             )
+        elif env_name == 'arshot':
+            # ARShot environment with token-based actions
+            # act_dim is actually the vocab_size for token prediction
+            self.act_decoder = nn.Linear(d_embed, act_dim, bias=False)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

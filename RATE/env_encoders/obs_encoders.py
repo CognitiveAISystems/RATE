@@ -76,5 +76,9 @@ class ObsEncoder(nn.Module):
         elif env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
             # MDP environments with vector observations
             self.obs_encoder = nn.Linear(state_dim, d_embed)
+        elif env_name == 'arshot':
+            # ARShot environment with token-based observations
+            # state_dim is actually the vocab_size for token embeddings
+            self.obs_encoder = nn.Embedding(state_dim+1, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

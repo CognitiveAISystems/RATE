@@ -92,7 +92,7 @@ class ARShotEnv(gym.Env):
         self.max_extra_pairs_before_shot = max(0, int(max_extra_pairs_before_shot))
 
         # ---- SPECIAL tokens
-        self.SPECIAL = ["!", ":", "shot", "pass"]
+        self.SPECIAL = ["!", ":", "shot"]
         if include_pass_token:
             self.SPECIAL.append("pass")
         reserved = set(self.SPECIAL)

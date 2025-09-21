@@ -242,6 +242,15 @@ class Config:
     min_n_final: Optional[int] = None
     max_n_final: Optional[int] = None
 
+    # For ARShot only!
+    n_pairs: Optional[int] = None
+    shot_mode: Optional[str] = None
+    deterministic_vocab: Optional[bool] = None
+    full_universe_vocab: Optional[bool] = None
+    randomize_pairs: Optional[bool] = None
+    include_pass_token: Optional[bool] = None 
+    num_episodes: Optional[int] = None
+
 
 if __name__ == "__main__":
     """

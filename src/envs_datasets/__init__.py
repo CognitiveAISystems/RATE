@@ -36,3 +36,9 @@ try:
 except ImportError:
     MDPDataset = None
     raise ImportError("MDPDataset is not found")
+
+try:
+    from .arshot_dataset import ARShotDataset
+except ImportError:
+    ARShotDataset = None
+    raise ImportError("ARShotDataset is not found")

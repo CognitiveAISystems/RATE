@@ -121,6 +121,8 @@ class Trainer(BaseTrainer):
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mikasarobo
         elif self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mdp
+        elif self.env_name == 'arshot':
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_arshot
 
         self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
         self.BLOCKS_CONTEXT = config["training"]["context_length"]
@@ -162,6 +164,38 @@ class Trainer(BaseTrainer):
                     json.dump(saved_config, f, indent=4)
             print('state_dim', pre_run[0].shape[-1], pre_run[0].shape)
             print('act_dim', pre_run[1].shape[-1], pre_run[1].shape)
+            
+        elif self.env_name == "arshot":
+            # For ARShot, we need to get the vocab size from the dataset
+            # The dataset should have the correct vocab size
+            from src.envs.associative_retrieval.arshotenv import ARShotEnv
+            temp_env = ARShotEnv(
+                n_pairs=self.config["n_pairs"],
+                shot_mode=self.config["shot_mode"],
+                deterministic_vocab=self.config["deterministic_vocab"],
+                full_universe_vocab=self.config["full_universe_vocab"],
+                randomize_pairs=self.config["randomize_pairs"],
+                include_pass_token=self.config["include_pass_token"]
+            )
+            vocab_size = len(temp_env.vocab)
+            
+            # Set both state_dim and act_dim to vocab_size for ARShot
+            self.config["model"]["state_dim"] = vocab_size
+            self.config["model"]["act_dim"] = vocab_size
+            
+            # Update the config file
+            config_path = os.path.join(self.run_dir, "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    saved_config = json.load(f)
+                saved_config["model"]["state_dim"] = vocab_size
+                saved_config["model"]["act_dim"] = vocab_size
+                with open(config_path, 'w') as f:
+                    json.dump(saved_config, f, indent=4)
+                    
+            print(f'ARShot vocab_size: {vocab_size}')
+            print('obs shape:', pre_run[0].shape)
+            print('action shape:', pre_run[1].shape)
 
         if self.config["model_mode"] in ["RATE", "DT", "RMT", "TrXL", "DTXL"]:
             self.model = RATE_model.RATE(**self.config["model"])
@@ -410,6 +444,16 @@ class Trainer(BaseTrainer):
             )
             mask = (target.reshape(-1, logits.size(-1)) != -10).float()
             loss = (loss * mask).sum() / (mask.sum() + 1e-8)
+        
+        elif self.env_name == 'arshot':
+            # ARShot environment - discrete token prediction
+            label_smoothing = self.config.get("model", {}).get("label_smoothing", 0.0) or 0.0
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1).long(),
+                ignore_index=-10,
+                label_smoothing=label_smoothing
+            )
 
         additional_metrics = {}
 
@@ -516,6 +560,12 @@ class Trainer(BaseTrainer):
                 text=text, env=self.env
             )
         elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')) or self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
+            return self._perform_mini_inference_impl(
+                self,
+                episode_timeout=episode_timeout,
+                text=text, env=self.env
+            )
+        elif self.env_name == 'arshot':
             return self._perform_mini_inference_impl(
                 self,
                 episode_timeout=episode_timeout,
@@ -663,9 +713,9 @@ class Trainer(BaseTrainer):
                     from_idx = block_part * self.BLOCKS_CONTEXT
                     to_idx = (block_part + 1) * self.BLOCKS_CONTEXT
 
-                    x1 = s[:, from_idx:to_idx, :].to(device=self.device, dtype=self.dtype)
-                    y1 = a[:, from_idx:to_idx, :].to(device=self.device, dtype=self.dtype)
-                    r1 = rtg[:,:,:][:, from_idx:to_idx, :].to(device=self.device, dtype=self.dtype)
+                    x1 = s[:, from_idx:to_idx].to(device=self.device, dtype=self.dtype if self.env_name != "arshot" else torch.long)
+                    y1 = a[:, from_idx:to_idx].to(device=self.device, dtype=self.dtype if self.env_name != "arshot" else torch.long)
+                    r1 = rtg[:, from_idx:to_idx].to(device=self.device, dtype=self.dtype)
                     t1 = timesteps[:, from_idx:to_idx].to(device=self.device)
                     masks1 = masks[:, from_idx:to_idx].to(device=self.device)
 
@@ -855,6 +905,12 @@ class Trainer(BaseTrainer):
                             self.env = None
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
+                    
+                    elif self.env_name == 'arshot':
+                        self.perform_mini_inference(
+                            episode_timeout=self.config["online_inference"]["episode_timeout"],
+                            text=None, env=self.env
+                        )
         
                 self.save_checkpoint()       
 

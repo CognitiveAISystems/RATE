@@ -45,5 +45,9 @@ class ActEncoder(nn.Module):
         elif env_name in ['MountainCarContinuous-v0', 'Pendulum-v1']:
             # Continuous MDP environments
             self.act_encoder = nn.Linear(act_dim, d_embed)
+        elif env_name == 'arshot':
+            # ARShot environment with token-based actions
+            # act_dim is actually the vocab_size for token embeddings
+            self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed), nn.Tanh())
         else:
             raise ValueError(f"Unknown environment: {env_name}")

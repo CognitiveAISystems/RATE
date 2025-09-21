@@ -288,6 +288,66 @@ class InferenceHandler(BaseTrainer):
         self.model.to(self.device)
 
     @staticmethod
+    def perform_mini_inference_arshot(self, episode_timeout, text=None, env=None):
+        from src.validation.val_arshot import get_returns_ARShot
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 1
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew = 0
+            cnt = 1
+            
+            # Test different n_pairs configurations
+            n_pairs_configs = [6, 10, 15, 20]
+            shot_modes = ["after_pairs", "after_any_colon"]
+            
+            for n_pairs in n_pairs_configs:
+                for shot_mode in shot_modes:
+                    for ret in [self.config["online_inference"]["desired_return_1"]]:
+                        returns = []
+                        for i in range(min(len(seeds), 20)):  # Limit to 20 seeds for faster evaluation
+                            episode_return, successes = \
+                                get_returns_ARShot(
+                                    model=self.model, 
+                                    ret=ret, 
+                                    seeds=[seeds[i]],
+                                    n_pairs=n_pairs,
+                                    shot_mode=shot_mode,
+                                    episode_timeout=episode_timeout,
+                                    context_length=self.config["training"]["context_length"], 
+                                    device=self.device,
+                                    config=self.config,
+                                    use_argmax=self.config["online_inference"]["use_argmax"],
+                                    deterministic_vocab=True,
+                                    full_universe_vocab=True,
+                                    randomize_pairs=True,
+                                    include_pass_token=True
+                                )
+
+                            returns.extend(episode_return)
+                            total_rew += sum(episode_return)
+                            curr_mean_ret = total_rew / cnt
+                            cnt += 1
+                            self.pbar.set_description(f"ARShot inference n_pairs={n_pairs} mode={shot_mode} [{i+1}/{min(len(seeds), 20)}] Return: {sum(episode_return):.2f}, Total: {total_rew:.2f}, Mean: {curr_mean_ret:.2f}")
+
+                        returns_mean = np.mean(returns)
+                        success_rate = np.mean([1.0 if r == 1.0 else 0.0 for r in returns])
+
+                        if self.wwandb:
+                            self.log({
+                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_success_rate": success_rate,
+                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_mean_return": returns_mean
+                            })
+                        
+                        print(f"n_pairs={n_pairs}, mode={shot_mode}: Success rate = {success_rate:.3f}, Mean return = {returns_mean:.3f}")
+                        
+            # Use the most challenging configuration for best checkpoint selection
+            self.current_metric_value = success_rate
+
+        self.model.to(self.device)
+
+    @staticmethod
     def perform_mini_inference_mikasarobo(self, episode_timeout, text=None, env=None):
         from src.validation.val_mikasa_robo import get_returns_MIKASARobo
 
@@ -399,3 +459,63 @@ class InferenceHandler(BaseTrainer):
                 self.current_metric_value = returns_mean
 
         self.model.to(self.device)
+    @staticmethod
+    def perform_mini_inference_arshot(self, episode_timeout, text=None, env=None):
+        from src.validation.val_arshot import get_returns_ARShot
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 1
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew = 0
+            cnt = 1
+            
+            # Test different n_pairs configurations
+            n_pairs_configs = [6, 10, 15, 20]
+            shot_modes = ["after_pairs", "after_any_colon"]
+            
+            for n_pairs in n_pairs_configs:
+                for shot_mode in shot_modes:
+                    for ret in [self.config["online_inference"]["desired_return_1"]]:
+                        returns = []
+                        for i in range(min(len(seeds), 20)):  # Limit to 20 seeds for faster evaluation
+                            episode_return, successes = \
+                                get_returns_ARShot(
+                                    model=self.model, 
+                                    ret=ret, 
+                                    seeds=[seeds[i]],
+                                    n_pairs=n_pairs,
+                                    shot_mode=shot_mode,
+                                    episode_timeout=episode_timeout,
+                                    context_length=self.config["training"]["context_length"], 
+                                    device=self.device,
+                                    config=self.config,
+                                    use_argmax=self.config["online_inference"]["use_argmax"],
+                                    deterministic_vocab=True,
+                                    full_universe_vocab=True,
+                                    randomize_pairs=True,
+                                    include_pass_token=True
+                                )
+
+                            returns.extend(episode_return)
+                            total_rew += sum(episode_return)
+                            curr_mean_ret = total_rew / cnt
+                            cnt += 1
+                            self.pbar.set_description(f"ARShot inference n_pairs={n_pairs} mode={shot_mode} [{i+1}/{min(len(seeds), 20)}] Return: {sum(episode_return):.2f}, Total: {total_rew:.2f}, Mean: {curr_mean_ret:.2f}")
+
+                        returns_mean = np.mean(returns)
+                        success_rate = np.mean([1.0 if r == 1.0 else 0.0 for r in returns])
+
+                        if self.wwandb:
+                            self.log({
+                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_success_rate": success_rate,
+                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_mean_return": returns_mean
+                            })
+                        
+                        print(f"n_pairs={n_pairs}, mode={shot_mode}: Success rate = {success_rate:.3f}, Mean return = {returns_mean:.3f}")
+                        
+            # Use the most challenging configuration for best checkpoint selection
+            self.current_metric_value = success_rate
+
+        self.model.to(self.device)
+

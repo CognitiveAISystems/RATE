@@ -66,6 +66,9 @@ def add_env_specific_info_to_config(config: dict) -> dict:
     elif config["model"]["env_name"] in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
         # MDP environments configuration
         config["training"]["max_segments"] = config["training"]["sections"]
+    elif config["model"]["env_name"] == "arshot":
+        # ARShot environment configuration
+        config["training"]["max_segments"] = config["training"]["sections"]
 
     return config
 
