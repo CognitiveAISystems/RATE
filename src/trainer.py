@@ -119,6 +119,8 @@ class Trainer(BaseTrainer):
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_popgym
         elif "mikasa_robo" in self.env_name:
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mikasarobo
+        elif self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mdp
 
         self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
         self.BLOCKS_CONTEXT = config["training"]["context_length"]
@@ -388,6 +390,26 @@ class Trainer(BaseTrainer):
                 )
         elif "mikasa_robo" in self.env_name:
             loss = F.mse_loss(logits, target)
+        
+        elif self.env_name in ['CartPole-v1', 'MountainCar-v0', 'Acrobot-v1']:
+            # Discrete MDP environments
+            label_smoothing = self.config.get("model", {}).get("label_smoothing", 0.0) or 0.0
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1).long(),
+                ignore_index=-10,
+                label_smoothing=label_smoothing
+            )
+        
+        elif self.env_name in ['MountainCarContinuous-v0', 'Pendulum-v1']:
+            # Continuous MDP environments
+            loss = F.mse_loss(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1, logits.size(-1)).float(),
+                reduction='none'
+            )
+            mask = (target.reshape(-1, logits.size(-1)) != -10).float()
+            loss = (loss * mask).sum() / (mask.sum() + 1e-8)
 
         additional_metrics = {}
 
@@ -493,7 +515,7 @@ class Trainer(BaseTrainer):
                 corridor_length=env_specific_args['corridor_length'],
                 text=text, env=self.env
             )
-        elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')):
+        elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')) or self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
             return self._perform_mini_inference_impl(
                 self,
                 episode_timeout=episode_timeout,
@@ -814,7 +836,7 @@ class Trainer(BaseTrainer):
                                 text=f"timeout_{timeout}", env=self.env
                             )
 
-                    elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')):
+                    elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')) or self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
                         if "mikasa_robo" in self.env_name:
                             # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
                             # the inference function in a separate way

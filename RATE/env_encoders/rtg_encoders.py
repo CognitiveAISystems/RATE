@@ -26,5 +26,8 @@ class RTGEncoder(nn.Module):
             self.rtg_encoder = nn.Linear(1, d_embed)
         elif "mikasa_robo" in env_name:
             self.rtg_encoder = nn.Linear(1, d_embed)
+        elif env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
+            # MDP environments
+            self.rtg_encoder = nn.Linear(1, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

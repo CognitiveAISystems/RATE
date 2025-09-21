@@ -39,5 +39,11 @@ class ActEncoder(nn.Module):
                 self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed)) # * act_dim depends on the env
         elif "mikasa_robo" in env_name:
             self.act_encoder = nn.Linear(act_dim, d_embed) # * act_dim = 8
+        elif env_name in ['CartPole-v1', 'MountainCar-v0', 'Acrobot-v1']:
+            # Discrete MDP environments
+            self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed), nn.Tanh())
+        elif env_name in ['MountainCarContinuous-v0', 'Pendulum-v1']:
+            # Continuous MDP environments
+            self.act_encoder = nn.Linear(act_dim, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

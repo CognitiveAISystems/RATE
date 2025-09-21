@@ -37,6 +37,8 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
         - "popgym": POPGym environments (Battleship, Minesweeper, etc.)
         - "mikasa_robo": MIKASA-Robo manipulation environment
         - "tmaze": TMaze environment with hint-based navigation
+        - MDP environments: "CartPole-v1", "MountainCar-v0", "MountainCarContinuous-v0", 
+          "Acrobot-v1", "Pendulum-v1" - Classic control environments with vector observations
 
     Notes:
         - Each environment uses its specific dataset class with appropriate
@@ -208,6 +210,28 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
         )
 
         print(f'Number of considered segments: {config["max_n_final"]}, dataset length: {len(combined_dataloader.dataset)}, Train: {len(train_dataset)}')
+        return train_dataloader
+    
+    elif config["model"]["env_name"] in ["CartPole-v1", "MountainCar-v0", "MountainCarContinuous-v0", "Acrobot-v1", "Pendulum-v1"]:
+        from src.envs_datasets import MDPDataset
+
+        train_dataset = MDPDataset(
+            directory=config["data"]["path_to_dataset"],
+            gamma=config["data"]["gamma"],
+            max_length=max_length,
+            env_name=config["model"]["env_name"]
+        )
+        
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_size=config["training"]["batch_size"],
+            shuffle=True,
+            num_workers=8,
+            pin_memory=True
+        )
+
+        print(f"Train: {len(train_dataset)} trajectory segments (max {max_length} steps per segment)")
+
         return train_dataloader
     
     else:

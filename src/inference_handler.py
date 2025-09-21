@@ -353,3 +353,49 @@ class InferenceHandler(BaseTrainer):
         
         torch.cuda.empty_cache()
         self.model.to(self.device)
+
+    @staticmethod
+    def perform_mini_inference_mdp(self, episode_timeout, text=None, env=None):
+        from src.validation.val_mdp import get_returns_MDP
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 1
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew_mm = 0
+            cnt = 1
+            for ret in [self.config["online_inference"]["desired_return_1"]]:
+                returns = []
+                ts = []
+                for i in range(len(seeds)):
+                    episode_return, act_list, t, _, _, attn_map, frames = \
+                        get_returns_MDP(
+                            model=self.model, 
+                            ret=ret, seed=seeds[i],
+                            episode_timeout=episode_timeout,
+                            context_length=self.config["training"]["context_length"], 
+                            device=self.device,
+                            config=self.config,
+                            use_argmax=self.config["online_inference"]["use_argmax"],
+                            env_name=self.config["model"]["env_name"]
+                        )
+
+                    returns.append(episode_return)
+                    ts.append(t)
+                    total_rew_mm += episode_return
+                    curr_mean_ret = total_rew_mm / cnt
+                    cnt += 1
+                    self.pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+
+                returns_mean = np.mean(returns)
+                returns_max = np.max(returns)
+                lifetime_mean = np.mean(ts)
+
+                if self.wwandb:
+                    self.log({
+                        f"LifeTimeMean_{ret}": lifetime_mean,
+                        f"ReturnsMax_{ret}": returns_max,
+                        f"ReturnsMean_{ret}": returns_mean})
+                self.current_metric_value = returns_mean
+
+        self.model.to(self.device)

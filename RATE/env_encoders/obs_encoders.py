@@ -73,5 +73,8 @@ class ObsEncoder(nn.Module):
                 nn.Linear(9216, d_embed),
                 nn.Tanh()
             )
+        elif env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
+            # MDP environments with vector observations
+            self.obs_encoder = nn.Linear(state_dim, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

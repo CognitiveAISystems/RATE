@@ -1,0 +1,21 @@
+Collecting Cython<0.30.0,>=0.29.24
+  Using cached Cython-0.29.37-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl.metadata (3.1 kB)
+Collecting fasteners==0.15
+  Using cached fasteners-0.15-py2.py3-none-any.whl.metadata (2.6 kB)
+Collecting lazy_loader
+  Using cached lazy_loader-0.4-py3-none-any.whl.metadata (7.6 kB)
+Collecting tifffile
+  Using cached tifffile-2024.8.30-py3-none-any.whl.metadata (31 kB)
+Requirement already satisfied: six in /home/jovyan/.mlspace/envs/echer-matl/lib/python3.9/site-packages (from fasteners==0.15) (1.17.0)
+Collecting monotonic>=0.1 (from fasteners==0.15)
+  Using cached monotonic-1.6-py2.py3-none-any.whl.metadata (1.5 kB)
+Requirement already satisfied: packaging in /home/jovyan/.mlspace/envs/echer-matl/lib/python3.9/site-packages (from lazy_loader) (25.0)
+Requirement already satisfied: numpy in /home/jovyan/.mlspace/envs/echer-matl/lib/python3.9/site-packages (from tifffile) (1.23.5)
+Using cached fasteners-0.15-py2.py3-none-any.whl (23 kB)
+Using cached Cython-0.29.37-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl (1.9 MB)
+Using cached lazy_loader-0.4-py3-none-any.whl (12 kB)
+Using cached tifffile-2024.8.30-py3-none-any.whl (227 kB)
+Using cached monotonic-1.6-py2.py3-none-any.whl (8.2 kB)
+Installing collected packages: monotonic, tifffile, lazy_loader, fasteners, Cython
+
+Successfully installed Cython-0.29.37 fasteners-0.15 lazy_loader-0.4 monotonic-1.6 tifffile-2024.8.30

@@ -30,3 +30,9 @@ try:
 except ImportError:
     MIKASARoboIterDataset = None
     raise ImportError("MIKASARoboIterDataset is not found")
+
+try:
+    from .mdp_dataset import MDPDataset
+except ImportError:
+    MDPDataset = None
+    raise ImportError("MDPDataset is not found")

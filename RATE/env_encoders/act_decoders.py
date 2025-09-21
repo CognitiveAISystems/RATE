@@ -33,5 +33,14 @@ class ActDecoder(nn.Module):
                 nn.Linear(d_embed, act_dim), 
                 nn.Tanh(),
             )
+        elif env_name in ['CartPole-v1', 'MountainCar-v0', 'Acrobot-v1']:
+            # Discrete MDP environments
+            self.act_decoder = nn.Linear(d_embed, act_dim, bias=False)
+        elif env_name in ['MountainCarContinuous-v0', 'Pendulum-v1']:
+            # Continuous MDP environments
+            self.act_decoder = nn.Sequential(
+                nn.Linear(d_embed, act_dim), 
+                nn.Tanh(),
+            )
         else:
             raise ValueError(f"Unknown environment: {env_name}")
