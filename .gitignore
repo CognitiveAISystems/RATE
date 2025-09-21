@@ -150,3 +150,4 @@ sweep_configs/
 
 validate_tmaze_from_ckpt_batch.py
 run_jobs/
+src/additional/gen_mdp_data/*
