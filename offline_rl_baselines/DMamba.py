@@ -130,7 +130,7 @@ class DMamba(nn.Module):
             if self.padding_idx is not None:
                 actions = torch.where(
                     actions == self.padding_idx,
-                    torch.tensor(self.act_dim, device=actions.device),
+                    torch.tensor(self.act_dim),
                     actions,
                 )
             action_embeddings = self.action_embeddings(actions).squeeze(2)
@@ -141,6 +141,10 @@ class DMamba(nn.Module):
 
     def reshape_states(self, states):
         reshape_required = False
+        use_long = False
+        for name, module in self.action_embeddings.named_children():
+            if isinstance(module, nn.Embedding):
+                use_long = True
 
         if len(states.shape) == 5:
             reshape_required = True
@@ -153,6 +157,9 @@ class DMamba(nn.Module):
         
         if reshape_required:
             states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
+
+        if use_long:
+            states = states.squeeze(2)
 
         return B, B1, states, reshape_required
     

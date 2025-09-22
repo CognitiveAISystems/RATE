@@ -299,8 +299,8 @@ class InferenceHandler(BaseTrainer):
             # Test different n_pairs configurations
             # n_pairs_configs = [6, 10, 15, 20]
             # shot_modes = ["after_pairs", "after_any_colon"]
-            n_pairs_configs = [3]
-            shot_modes = ["after_any_colon"]
+            n_pairs_configs = [5, 10]
+            shot_modes = ["after_pairs"]
             
             for n_pairs in n_pairs_configs:
                 for shot_mode in shot_modes:
@@ -312,7 +312,7 @@ class InferenceHandler(BaseTrainer):
                             seeds=seeds,  # Pass all seeds at once
                             n_pairs=n_pairs,
                             shot_mode=shot_mode,
-                            episode_timeout=episode_timeout,
+                            episode_timeout=5*n_pairs+4+1,
                             context_length=self.config["training"]["context_length"], 
                             device=self.device,
                             config=self.config,

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from RATE.env_encoders import ObsEncoder, ActDecoder
+from RATE.env_encoders import ObsEncoder, ActDecoder, ActEncoder
 
 
 class BehaviorCloning(nn.Module):
@@ -36,6 +36,7 @@ class BehaviorCloning(nn.Module):
         self.num_directions = 2 if bidirectional else 1
         
         self.state_encoder = ObsEncoder(self.env_name, state_dim, self.d_embed).obs_encoder
+        self.action_embeddings  = ActEncoder(self.env_name, act_dim, self.d_embed).act_encoder
         
         # Choosing backbone architecture
         if self.backbone == 'mlp':
@@ -97,8 +98,31 @@ class BehaviorCloning(nn.Module):
         
         return h_0, c_0
 
+    def encode_actions(self, actions):
+        use_long = False
+        for name, module in self.action_embeddings.named_children():
+            if isinstance(module, nn.Embedding):
+                use_long = True
+        if use_long:
+            actions = actions.to(dtype=torch.long, device=actions.device)
+            if self.padding_idx is not None:
+                actions = torch.where(
+                    actions == self.padding_idx,
+                    torch.tensor(self.act_dim),
+                    actions,
+                )
+            action_embeddings = self.action_embeddings(actions).squeeze(2)
+        else:
+            action_embeddings = self.action_embeddings(actions)
+
+        return action_embeddings
+
     def reshape_states(self, states):
         reshape_required = False
+        use_long = False
+        for name, module in self.action_embeddings.named_children():
+            if isinstance(module, nn.Embedding):
+                use_long = True
 
         if len(states.shape) == 5:
             reshape_required = True
@@ -111,6 +135,9 @@ class BehaviorCloning(nn.Module):
         
         if reshape_required:
             states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
+
+        if use_long:
+            states = states.squeeze(2)
 
         return B, B1, states, reshape_required
     

@@ -15,10 +15,12 @@ class ARShotEnv(gym.Env):
 
     Token stream:
       - shot_mode="after_pairs":
-          [! k : v !] x P  +  [! query_key : shot]          → length T = 5*P + 4
+          [! k : v !] x n_pairs  +  [! query_key : shot]          → length T = 5*n_pairs + 4
+          (shows ALL n_pairs before shot, query_key is from any shown pair)
       - shot_mode="after_any_colon":
           [! k : v !] x P  +  [! k : v !] x E + [! k : shot] → T = 5*(P+E) + 4
-        (query_key was previously encountered as a complete pair)
+          (shows P pairs first, then E extra pairs, query_key was in the first P pairs)
+          (P is controlled by prefix_pairs_range, E by max_extra_pairs_before_shot)
 
     Observation — one token per step.
     Reward is given only when current token == 'shot':
@@ -262,15 +264,21 @@ class ARShotEnv(gym.Env):
         values = self.rng.sample(self.values_vocab, self.n_pairs)
         self._mapping = {k: v for k, v in zip(keys, values)}
 
-        min_p, max_p = self.prefix_pairs_range
-        shown_pairs = self.rng.randint(min_p, max_p)
-        shown_order = self.rng.sample(keys, shown_pairs)
+        # In "after_pairs" mode, we always show ALL n_pairs before the shot
+        # The prefix_pairs_range is ignored in this mode - we show all pairs
+        shown_order = keys.copy()
+        self.rng.shuffle(shown_order)  # randomize the order of showing pairs
 
         stream: List[str] = []
+        last_shown_key = None
         for k in shown_order:
             self._append_full_pair_tokens(stream, k)
+            last_shown_key = k  # track last shown key
 
-        self._query_key = self.rng.choice(shown_order) if self.query_from_any_shown else shown_order[-1]
+        if self.query_from_any_shown:
+            self._query_key = self.rng.choice(shown_order)
+        else:
+            self._query_key = last_shown_key  # last shown pair
         stream += ["!", self._query_key, ":", "shot"]
         return stream
 
@@ -286,11 +294,16 @@ class ARShotEnv(gym.Env):
         shown_order = self.rng.sample(keys, shown_pairs)
 
         stream: List[str] = []
+        last_shown_key = None
         for k in shown_order:
             self._append_full_pair_tokens(stream, k)
+            last_shown_key = k 
 
         # query key from shown ones
-        self._query_key = self.rng.choice(shown_order) if self.query_from_any_shown else shown_order[-1]
+        if self.query_from_any_shown:
+            self._query_key = self.rng.choice(shown_order)
+        else:
+            self._query_key = last_shown_key
 
         # optional additional pairs before repeated appearance of key
         remaining_keys = [k for k in keys if k not in shown_order]

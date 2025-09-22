@@ -686,18 +686,18 @@ class MATLModel(nn.Module):
             return [layer.init_memory(batch_size, device) for layer in self.layers]
     
     def encode_actions(self, actions):
-        """Encode actions using the action encoder."""
         use_long = False
         for name, module in self.action_embeddings.named_children():
             if isinstance(module, nn.Embedding):
                 use_long = True
         if use_long:
             actions = actions.to(dtype=torch.long, device=actions.device)
-            actions = torch.where(
-                actions == self.padding_idx,
-                torch.tensor(self.act_dim, device=actions.device),
-                actions,
-            )
+            if self.padding_idx is not None:
+                actions = torch.where(
+                    actions == self.padding_idx,
+                    torch.tensor(self.act_dim),
+                    actions,
+                )
             action_embeddings = self.action_embeddings(actions).squeeze(2)
         else:
             action_embeddings = self.action_embeddings(actions)
@@ -705,8 +705,11 @@ class MATLModel(nn.Module):
         return action_embeddings
 
     def reshape_states(self, states):
-        """Reshape states for different input formats."""
         reshape_required = False
+        use_long = False
+        for name, module in self.action_embeddings.named_children():
+            if isinstance(module, nn.Embedding):
+                use_long = True
 
         if len(states.shape) == 5:
             reshape_required = True
@@ -718,7 +721,10 @@ class MATLModel(nn.Module):
             B, B1, _ = states.shape
         
         if reshape_required:
-            states = states.reshape(-1, C, H, W).to(dtype=self.dtype).contiguous()
+            states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
+
+        if use_long:
+            states = states.squeeze(2)
 
         return B, B1, states, reshape_required
     

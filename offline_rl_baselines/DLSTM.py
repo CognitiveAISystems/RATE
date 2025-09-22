@@ -106,23 +106,6 @@ class DecisionLSTM(nn.Module):
             
             return h_0
 
-    def reshape_states(self, states):
-        reshape_required = False
-
-        if len(states.shape) == 5:
-            reshape_required = True
-            B, B1, C, H, W = states.shape
-        elif len(states.shape) == 6:
-            reshape_required = True
-            B, B1, _, C, H, W = states.shape
-        else:
-            B, B1, _ = states.shape
-        
-        if reshape_required:
-            states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
-
-        return B, B1, states, reshape_required
-    
     def encode_actions(self, actions):
         use_long = False
         for name, module in self.action_embeddings.named_children():
@@ -141,6 +124,30 @@ class DecisionLSTM(nn.Module):
             action_embeddings = self.action_embeddings(actions)
 
         return action_embeddings
+
+    def reshape_states(self, states):
+        reshape_required = False
+        use_long = False
+        for name, module in self.action_embeddings.named_children():
+            if isinstance(module, nn.Embedding):
+                use_long = True
+
+        if len(states.shape) == 5:
+            reshape_required = True
+            B, B1, C, H, W = states.shape
+        elif len(states.shape) == 6:
+            reshape_required = True
+            B, B1, _, C, H, W = states.shape
+        else:
+            B, B1, _ = states.shape
+        
+        if reshape_required:
+            states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
+
+        if use_long:
+            states = states.squeeze(2)
+
+        return B, B1, states, reshape_required
 
     def forward(self, states, actions=None, rtgs=None, target=None, timesteps=None, mem_tokens=None, masks=None, hidden=None, *args, **kwargs):
         B, B1, states, reshape_required = self.reshape_states(states)

@@ -16,27 +16,27 @@ python src/train.py \
     --full-universe-vocab True \
     --randomize-pairs True \
     --include-pass-token True \
-    --num-episodes 3000 \
+    --num-episodes 1000 \
     --max-vocab-size 500 \
     \
     --model.state-dim 3849 \
     --model.act-dim 3849 \
     --model.n-layer 6 \
     --model.n-head 8 \
-    --model.n-head-ca 2 \
+    --model.n-head-ca 0 \
     --model.d-model 128 \
     --model.d-head 128 \
     --model.d-inner 128 \
     --model.dropout 0.2 \
     --model.dropatt 0.05 \
-    --model.mem-len 210 \
+    --model.mem-len 0 \
     --model.ext-len 0 \
-    --model.num-mem-tokens 5 \
-    --model.mem-at-end True \
-    --model.mrv-act "relu" \
-    --model.skip-dec-ffn True \
+    --model.num-mem-tokens 0 \
+    --model.mem-at-end False \
+    --model.mrv-act "no_act" \
+    --model.skip-dec-ffn False \
     --model.padding-idx -10 \
-    --tensorboard-dir=runs/ARShot/RATE \
+    --tensorboard-dir=runs/ARShot/DT \
     \
     --data.gamma 1.0 \
     \
@@ -62,7 +62,7 @@ python src/train.py \
     --online-inference.desired-return-1 1.0 \
     --online-inference.best-checkpoint-metric "success_rate" \
     \
-    --model-mode "RATE" \
+    --model-mode "DT" \
     --arch-mode "TrXL" \
     --start-seed 1 \
     --end-seed 3 \

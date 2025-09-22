@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# ARShot Environment Training Script for RATE
-# This script trains RATE model on the ARShot associative retrieval task
-    # --model.state-dim 3849 \
-    # --model.act-dim 3849 \
+# ARShot Environment Training Script for MATL
+# This script trains MATL model on the ARShot associative retrieval task
 
 python src/train.py \
     --wandb.project-name "MATL-ARShot" \
@@ -16,27 +14,47 @@ python src/train.py \
     --full-universe-vocab True \
     --randomize-pairs True \
     --include-pass-token True \
-    --num-episodes 3000 \
+    --num-episodes 1000 \
     --max-vocab-size 500 \
     \
     --model.state-dim 3849 \
     --model.act-dim 3849 \
     --model.n-layer 6 \
     --model.n-head 8 \
-    --model.n-head-ca 2 \
-    --model.d-model 128 \
-    --model.d-head 128 \
-    --model.d-inner 128 \
+    --model.d-ff=256 \
+    --model.d-model=128 \
     --model.dropout 0.2 \
     --model.dropatt 0.05 \
-    --model.mem-len 210 \
-    --model.ext-len 0 \
-    --model.num-mem-tokens 5 \
-    --model.mem-at-end True \
-    --model.mrv-act "relu" \
-    --model.skip-dec-ffn True \
     --model.padding-idx -10 \
-    --tensorboard-dir=runs/ARShot/RATE \
+    \
+    --model.norm-type=layer \
+    --data.max-length=None \
+    --model.detach-memory=True \
+    --model.label-smoothing=0.0 \
+    --model.load-balancing-loss-coef=0.01 \
+    --model.lru-blend-alpha=0.05 \
+    --model.max-seq-len=1024 \
+    --model.memory-dropout=0.05 \
+    --model.memory-init-std=0.01 \
+    --model.memory-size=16 \
+    --model.n-shared-experts=1 \
+    --model.num-experts=4 \
+    --model.pos-type=relative \
+    --model.pre-lnorm=False \
+    --model.routed-d-ff=128 \
+    --model.sequence-format=s \
+    --model.shared-d-ff=256 \
+    --model.top-k=2 \
+    --model.use-causal-self-attn-mask=True \
+    --model.use-lru=True \
+    --model.use-moe=True \
+    --model.use-shared-expert=True \
+    --model.use-swiglu=False \
+    --model.use-shared-memory=False \
+    --model.use-relative-bias=True \
+    --model.use-tok2mem=True \
+    --model.use-mem2tok=True \
+    --tensorboard-dir=runs/ARShot/MATL \
     \
     --data.gamma 1.0 \
     \
@@ -62,8 +80,7 @@ python src/train.py \
     --online-inference.desired-return-1 1.0 \
     --online-inference.best-checkpoint-metric "success_rate" \
     \
-    --model-mode "RATE" \
-    --arch-mode "TrXL" \
+    --model-mode "MATL" \
     --start-seed 1 \
     --end-seed 3 \
     --text "arshot_n11_after_pairs" \
