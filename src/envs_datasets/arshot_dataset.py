@@ -82,14 +82,14 @@ class ARShotDataset(Dataset):
 
     def _generate_episodes(self):
         """Generate episodes and store them in memory."""
+        # Create environment with random seed for variety
+        env = ARShotEnv(
+            n_pairs=self.n_pairs, 
+            shot_mode=self.shot_mode,
+            rng_seed=None,  # Let it be random for each episode
+            **self.env_kwargs
+        )
         for episode_idx in tqdm(range(self.num_episodes)):
-            # Create environment with random seed for variety
-            env = ARShotEnv(
-                n_pairs=self.n_pairs, 
-                shot_mode=self.shot_mode,
-                rng_seed=None,  # Let it be random for each episode
-                **self.env_kwargs
-            )
             
             obs, info = env.reset()
             done = False

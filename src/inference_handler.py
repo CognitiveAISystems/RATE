@@ -299,7 +299,7 @@ class InferenceHandler(BaseTrainer):
             # Test different n_pairs configurations
             # n_pairs_configs = [6, 10, 15, 20]
             # shot_modes = ["after_pairs", "after_any_colon"]
-            n_pairs_configs = [5, 10]
+            n_pairs_configs = [5, 20, 50, 100, 500]
             shot_modes = ["after_pairs"]
             
             for n_pairs in n_pairs_configs:
