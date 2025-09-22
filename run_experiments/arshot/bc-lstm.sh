@@ -16,6 +16,8 @@ python3 src/train.py \
     --include-pass-token True \
     --num-episodes 1000 \
     --max-vocab-size 500 \
+    --model.state-dim 3849 \
+    --model.act-dim 3849 \
     \
     --data.gamma 1.0 \
     --data.path-to-dataset None \
