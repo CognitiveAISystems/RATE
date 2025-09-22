@@ -235,30 +235,25 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
         return train_dataloader
     
     elif config["model"]["env_name"] == "arshot":
-        from src.envs_datasets import ARShotDataset
+        from src.envs_datasets.arshot_dataset import create_arshot_dataloader
 
-        train_dataset = ARShotDataset(
+        train_dataloader = create_arshot_dataloader(
             n_pairs=config["n_pairs"],
             shot_mode=config["shot_mode"],
             max_length=max_length,
             gamma=config["data"]["gamma"],
             num_episodes=config["num_episodes"],
+            batch_size=config["training"]["batch_size"],
+            shuffle=True,
+            num_workers=4,
             deterministic_vocab=config["deterministic_vocab"],
             full_universe_vocab=config["full_universe_vocab"],
             randomize_pairs=config["randomize_pairs"],
             include_pass_token=config["include_pass_token"],
             max_vocab_size=config["max_vocab_size"]
         )
-        
-        train_dataloader = DataLoader(
-            train_dataset,
-            batch_size=config["training"]["batch_size"],
-            shuffle=True,
-            num_workers=4,  # Reduced since we're generating in-memory
-            pin_memory=True
-        )
 
-        print(f"Train: {len(train_dataset)} generated episodes (max {max_length} steps per episode)")
+        print(f"Train: {len(train_dataloader.dataset)} generated episodes (max {max_length} steps per episode)")
 
         return train_dataloader
     

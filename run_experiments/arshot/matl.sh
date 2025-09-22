@@ -8,13 +8,13 @@ python src/train.py \
     --wandb.wwandb False \
     \
     --model.env-name "arshot" \
-    --n-pairs 11 \
+    --n-pairs 5 \
     --shot-mode "after_any_colon" \
     --deterministic-vocab True \
     --full-universe-vocab True \
     --randomize-pairs True \
     --include-pass-token True \
-    --num-episodes 1000 \
+    --num-episodes 100 \
     --max-vocab-size 500 \
     \
     --model.state-dim 3849 \
@@ -42,7 +42,7 @@ python src/train.py \
     --model.pos-type=relative \
     --model.pre-lnorm=False \
     --model.routed-d-ff=128 \
-    --model.sequence-format=s \
+    --model.sequence-format=sa \
     --model.shared-d-ff=256 \
     --model.top-k=2 \
     --model.use-causal-self-attn-mask=True \
@@ -61,21 +61,21 @@ python src/train.py \
     --training.learning-rate 3e-4 \
     --training.lr-end-factor 0.1 \
     --training.beta-1 0.9 \
-    --training.beta-2 0.95 \
+    --training.beta-2 0.999 \
     --training.weight-decay 0.1 \
-    --training.batch-size 128 \
+    --training.batch-size 64 \
     --training.warmup-steps 10000 \
     --training.final-tokens 10000000 \
-    --training.grad-norm-clip 1.0 \
-    --training.epochs 100 \
-    --training.ckpt-epoch 10 \
+    --training.grad-norm-clip 3.0 \
+    --training.epochs 1000 \
+    --training.ckpt-epoch 100 \
     --training.online-inference True \
     --training.log-last-segment-loss-only False \
     --training.use-cosine-decay True \
-    --training.context-length 20 \
-    --training.sections 3 \
+    --training.context-length 30 \
+    --training.sections 1 \
     \
-    --online-inference.use-argmax True \
+    --online-inference.use-argmax False \
     --online-inference.episode-timeout 2505 \
     --online-inference.desired-return-1 1.0 \
     --online-inference.best-checkpoint-metric "success_rate" \
@@ -84,4 +84,4 @@ python src/train.py \
     --start-seed 1 \
     --end-seed 3 \
     --text "arshot_n11_after_pairs" \
-    --dtype "float32"
+    --dtype "bfloat16"

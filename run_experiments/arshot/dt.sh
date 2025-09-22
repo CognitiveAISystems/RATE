@@ -10,23 +10,23 @@ python src/train.py \
     --wandb.wwandb False \
     \
     --model.env-name "arshot" \
-    --n-pairs 11 \
+    --n-pairs 2 \
     --shot-mode "after_any_colon" \
     --deterministic-vocab True \
     --full-universe-vocab True \
     --randomize-pairs True \
     --include-pass-token True \
-    --num-episodes 1000 \
-    --max-vocab-size 500 \
+    --num-episodes 10 \
+    --max-vocab-size 10 \
     \
     --model.state-dim 3849 \
     --model.act-dim 3849 \
     --model.n-layer 6 \
     --model.n-head 8 \
     --model.n-head-ca 0 \
-    --model.d-model 128 \
-    --model.d-head 128 \
-    --model.d-inner 128 \
+    --model.d-model 64 \
+    --model.d-head 64 \
+    --model.d-inner 64 \
     --model.dropout 0.2 \
     --model.dropatt 0.05 \
     --model.mem-len 0 \
@@ -45,12 +45,12 @@ python src/train.py \
     --training.beta-1 0.9 \
     --training.beta-2 0.95 \
     --training.weight-decay 0.1 \
-    --training.batch-size 128 \
+    --training.batch-size 64 \
     --training.warmup-steps 10000 \
     --training.final-tokens 10000000 \
     --training.grad-norm-clip 1.0 \
-    --training.epochs 100 \
-    --training.ckpt-epoch 10 \
+    --training.epochs 1000 \
+    --training.ckpt-epoch 100 \
     --training.online-inference True \
     --training.log-last-segment-loss-only False \
     --training.use-cosine-decay True \

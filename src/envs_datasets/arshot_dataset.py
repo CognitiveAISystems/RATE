@@ -3,167 +3,241 @@ ARShot Dataset Class
 
 A PyTorch Dataset for loading and processing ARShot environment trajectories.
 Compatible with the existing RATE/MATL training pipeline.
+Follows the same structure as TMaze dataset.
 """
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import random
+import os
+import pickle
+import glob
 from typing import Tuple, Optional, Dict, Any, List
 import torch.nn.functional as F
 from tqdm import tqdm
 from src.envs.associative_retrieval.arshotenv import ARShotEnv
 
 
-class ARShotDataset(Dataset):
-    """A PyTorch Dataset for generating and processing ARShot environment trajectories.
-    
-    This dataset handles generating ARShot environment trajectories in-memory.
-    It processes observations (tokens), actions (tokens), and rewards from the
-    associative retrieval environment with 'shot' queries.
+def ARShot_data_generator(n_pairs: int, shot_mode: str, num_episodes: int, 
+                         max_length: int = 100, **env_kwargs) -> None:
+    """Generate and save ARShot trajectory data.
 
-    Attributes:
-        n_pairs (int): Number of key-value pairs in the environment.
-        shot_mode (str): Mode for shot placement ("after_pairs" or "after_any_colon").
-        max_length (int): Maximum sequence length for trajectory segments.
-        gamma (float): Discount factor for computing return-to-go (RTG).
-        num_episodes (int): Number of episodes to generate.
-        env_kwargs (dict): Additional keyword arguments for environment creation.
-        episodes (list): Generated episodes stored in memory.
+    This function generates trajectory data for ARShot environments with specified
+    configuration and saves them as pickle files. It ensures data availability for training
+    by generating missing data files.
+
+    Args:
+        n_pairs: Number of key-value pairs in the environment.
+        shot_mode: Mode for shot placement ("after_pairs" or "after_any_colon").
+        num_episodes: Number of episodes to generate.
+        max_length: Maximum sequence length for trajectory segments.
+        **env_kwargs: Additional keyword arguments for ARShotEnv.
 
     Note:
-        The dataset generates episodes with the following structure:
-        - 'obs': Token strings (not indices)
-        - 'action': Action token strings  
-        - 'reward': Scalar reward values
-        - 'done': Episode termination flags
+        Generated data is saved in 'data/ARShot/' directory with filenames
+        following the pattern 'arshot_n{n_pairs}_{shot_mode}_ep{num_episodes}.pickle'.
+    """
+    current_directory = os.getcwd()
+    name = f'arshot_n{n_pairs}_{shot_mode}_ep{num_episodes}'
+    data_path = os.path.join(current_directory, 'data', 'ARShot')
+    save_path = os.path.join(data_path, f"{name}.pickle")
+    
+    if not os.path.exists(save_path):
+        print("ARShot data is not available. Generating...")
+        generate_dict_with_arshot_trajectories(n_pairs=n_pairs, shot_mode=shot_mode,
+                                             num_episodes=num_episodes, max_length=max_length,
+                                             **env_kwargs)
+        print("ARShot data successfully generated.")
+    else:
+        print("ARShot data is available.")
+
+
+def generate_arshot_trajectory(n_pairs: int, shot_mode: str, episode_seed: int,
+                              max_length: int = 100, **env_kwargs) -> tuple:
+    """Generate a single ARShot trajectory.
+
+    This function generates a trajectory in the ARShot environment following
+    the correct policy for associative retrieval.
+
+    Args:
+        n_pairs: Number of key-value pairs in the environment.
+        shot_mode: Mode for shot placement ("after_pairs" or "after_any_colon").
+        episode_seed: Seed for reproducible episode generation.
+        max_length: Maximum sequence length.
+        **env_kwargs: Additional keyword arguments for ARShotEnv.
+
+    Returns:
+        A tuple containing:
+            - observations (list): List of token strings
+            - actions (list): List of action token strings  
+            - rtgs (ndarray): Return-to-go values
+            - dones (ndarray): Episode termination flags
+            - info (dict): Episode info containing mapping and query_key
+    """
+    # Create environment with seed
+    env = ARShotEnv(n_pairs=n_pairs, shot_mode=shot_mode, rng_seed=episode_seed, **env_kwargs)
+    
+    obs, info = env.reset()
+    done = False
+    t = 0
+    
+    observations = []
+    actions = []
+    rewards = []
+    dones = []
+    
+    # Add initial observation
+    obs_token = env.id_to_token[obs]
+    observations.append(obs_token)
+    
+    while not done and t < max_length:
+        # Determine action based on current token
+        current_token = env.id_to_token[obs]
         
-        Episodes are padded to max_length if shorter than max_length.
-        Padding uses special values:
-        - Actions are padded with -10 (special padding index)
-        - Rewards are padded with 0.0
-        - Done flags are padded with False
+        if current_token == "shot":
+            # When we see 'shot', we should predict the correct value
+            act_token = info["mapping"][info["query_key"]]
+        else:
+            # For all other tokens, use 'pass' (no-op)
+            act_token = "pass"
+        
+        # Take action
+        action_id = env.token_to_id[act_token]
+        next_obs, reward, done, truncated, next_info = env.step(action_id)
+        
+        actions.append(act_token)
+        rewards.append(reward)
+        dones.append(done or truncated)
+        
+        # Add next observation if not done
+        if not (done or truncated) and t + 1 < max_length:
+            next_obs_token = env.id_to_token[next_obs]
+            observations.append(next_obs_token)
+        
+        obs = next_obs
+        t += 1
+    
+    # Convert rewards to return-to-go
+    rewards = np.array(rewards)
+    rtgs = np.zeros_like(rewards, dtype=np.float32)
+    rtg = 0.0
+    for i in reversed(range(len(rewards))):
+        rtg = rewards[i] + rtg  # gamma = 1.0 for ARShot
+        rtgs[i] = rtg
+    
+    # Add initial RTG
+    rtgs = np.concatenate([[rtgs[0]], rtgs])
+    
+    return observations, actions, rtgs, np.array(dones), info
+
+
+def generate_dict_with_arshot_trajectories(n_pairs: int, shot_mode: str, num_episodes: int,
+                                          max_length: int = 100, **env_kwargs) -> None:
+    """Generate and save a dictionary of ARShot trajectories.
+
+    This function generates multiple trajectories for the ARShot environment
+    and saves them as a dictionary in a pickle file.
+
+    Args:
+        n_pairs: Number of key-value pairs in the environment.
+        shot_mode: Mode for shot placement ("after_pairs" or "after_any_colon").
+        num_episodes: Number of episodes to generate.
+        max_length: Maximum sequence length.
+        **env_kwargs: Additional keyword arguments for ARShotEnv.
+
+    Note:
+        Generated data is saved as a dictionary where each key is an index
+        and the value is a dictionary containing:
+        - 'obs': List of observation tokens
+        - 'action': List of action tokens
+        - 'rtg': Return-to-go values
+        - 'done': Episode termination flags
+        - 'info': Episode info (mapping and query_key)
+    """
+    current_directory = os.getcwd()
+    name = f'arshot_n{n_pairs}_{shot_mode}_ep{num_episodes}'
+    data_path = os.path.join(current_directory, 'data', 'ARShot')
+    save_path = os.path.join(data_path, f"{name}.pickle")
+    
+    # Create directory if it doesn't exist
+    if not os.path.exists(data_path):
+        os.makedirs(data_path)
+
+    # Remove existing files
+    files = glob.glob(save_path + '*')
+    for f in files:
+        os.remove(f)
+
+    data = {}
+    
+    for episode_idx in tqdm(range(num_episodes), desc="Generating ARShot episodes"):
+        episode_seed = episode_idx + 1000  # Reproducible seeds
+        
+        observations, actions, rtgs, dones, info = generate_arshot_trajectory(
+            n_pairs=n_pairs, shot_mode=shot_mode, episode_seed=episode_seed,
+            max_length=max_length, **env_kwargs
+        )
+        
+        data[episode_idx] = {
+            'obs': observations,
+            'action': actions, 
+            'rtg': rtgs,
+            'done': dones,
+            'info': info
+        }
+
+    # Save data
+    with open(save_path, 'wb') as f:
+        pickle.dump(data, f)
+    
+    print(f"Saved {num_episodes} ARShot episodes to {save_path}")
+
+
+class ARShotDataset(Dataset):
+    """A PyTorch Dataset for loading and processing ARShot environment trajectories.
+    
+    This dataset handles loading and preprocessing of ARShot environment trajectories
+    stored as pickle files. It processes observations (tokens), actions (tokens), and 
+    rewards from the associative retrieval environment with 'shot' queries.
+
+    Attributes:
+        data (dict): Dictionary containing trajectory data loaded from pickle file.
+        gamma (float): Discount factor for computing return-to-go (RTG).
+        max_length (int): Maximum sequence length for trajectory segments.
+        env (ARShotEnv): Reference environment for token-to-id mapping.
+
+    Note:
+        The dataset expects each trajectory to contain:
+        - 'obs': List of observation tokens
+        - 'action': List of action tokens
+        - 'rtg': Return-to-go values
+        - 'done': Episode termination flags
+        - 'info': Episode info (mapping and query_key)
     """
 
-    def __init__(self, n_pairs: int = 6, shot_mode: str = "after_pairs", 
-                 max_length: int = 100, gamma: float = 1.0, num_episodes: int = 1000,
-                 **env_kwargs):
+    def __init__(self, path: str, gamma: float, max_length: int, n_pairs: int, 
+                 shot_mode: str, **env_kwargs):
         """Initialize the ARShot dataset.
 
         Args:
+            path: Path to the pickle file containing trajectory data.
+            gamma: Discount factor for computing return-to-go values.
+            max_length: Maximum sequence length for trajectory segments.
             n_pairs: Number of key-value pairs in the environment.
             shot_mode: Mode for shot placement ("after_pairs" or "after_any_colon").
-            max_length: Maximum number of timesteps to use in each trajectory segment.
-            gamma: Discount factor for computing return-to-go values.
-            num_episodes: Number of episodes to generate and store in memory.
-            **env_kwargs: Additional keyword arguments passed to ARShotEnv.
+            **env_kwargs: Additional keyword arguments for ARShotEnv.
         """
-        self.n_pairs = n_pairs
-        self.shot_mode = shot_mode
-        self.max_length = max_length
+        with open(path, 'rb') as f:
+            self.data = pickle.load(f)
+            
         self.gamma = gamma
-        self.num_episodes = num_episodes
-        self.env_kwargs = env_kwargs
+        self.max_length = max_length
         
-        # Generate episodes in memory
-        self.episodes = []
-        self._generate_episodes()
-        
-        # Create a reference environment to get vocab mappings
+        # Create reference environment for token-to-id mapping
         self.env = ARShotEnv(n_pairs=n_pairs, shot_mode=shot_mode, **env_kwargs)
         self.vocab_size = len(self.env.vocab)
         
-        print(f"Generated ARShot dataset:")
-        print(f"  Episodes: {len(self.episodes)}")
-        print(f"  n_pairs: {n_pairs}")
-        print(f"  shot_mode: {shot_mode}")
-        print(f"  max_length: {max_length}")
-        print(f"  vocab_size: {self.vocab_size}")
-
-    def _generate_episodes(self):
-        """Generate episodes and store them in memory."""
-        # Create environment with random seed for variety
-        env = ARShotEnv(
-            n_pairs=self.n_pairs, 
-            shot_mode=self.shot_mode,
-            rng_seed=None,  # Let it be random for each episode
-            **self.env_kwargs
-        )
-        for episode_idx in tqdm(range(self.num_episodes)):
-            
-            obs, info = env.reset()
-            done = False
-            t = 0
-            
-            episode_data = {
-                'obs': [],
-                'action': [],
-                'reward': [],
-                'done': [],
-                'info': info
-            }
-            
-            # Add initial observation
-            obs_token = env.id_to_token[obs]
-            episode_data['obs'].append(obs_token)
-            
-            while not done and t < self.max_length:
-                # Determine action based on current token
-                current_token = env.id_to_token[obs]
-                
-                if current_token == "shot":
-                    # When we see 'shot', we should predict the correct value
-                    act_token = info["mapping"][info["query_key"]]
-                else:
-                    # For all other tokens, use 'pass' (no-op)
-                    act_token = "pass"
-                
-                # Take action
-                action_id = env.token_to_id[act_token]
-                next_obs, reward, done, truncated, next_info = env.step(action_id)
-                
-                episode_data['action'].append(act_token)
-                episode_data['reward'].append(reward)
-                episode_data['done'].append(done or truncated)
-                
-                # Add next observation if not done
-                if not (done or truncated) and t + 1 < self.max_length:
-                    next_obs_token = env.id_to_token[next_obs]
-                    episode_data['obs'].append(next_obs_token)
-                
-                obs = next_obs
-                t += 1
-            
-            # Pad episode to max_length if needed
-            current_length = len(episode_data['obs'])
-            if current_length < self.max_length:
-                pad_length = self.max_length - current_length
-                
-                # Pad observations with 'pass'
-                episode_data['obs'].extend(['pass'] * pad_length)
-                
-                # Pad actions with -10 (but we need one less action than observations)
-                if len(episode_data['action']) < self.max_length:
-                    action_pad_length = self.max_length - len(episode_data['action'])
-                    # episode_data['action'].extend(['pass'] * action_pad_length)
-                    episode_data['action'].extend([-10] * action_pad_length)
-                
-                # Pad rewards and dones
-                episode_data['reward'].extend([0.0] * pad_length)
-                episode_data['done'].extend([False] * pad_length)
-            
-            # Ensure we have the right lengths
-            if len(episode_data['obs']) > self.max_length:
-                episode_data['obs'] = episode_data['obs'][:self.max_length]
-            if len(episode_data['action']) > self.max_length:
-                episode_data['action'] = episode_data['action'][:self.max_length]
-            if len(episode_data['reward']) > self.max_length:
-                episode_data['reward'] = episode_data['reward'][:self.max_length]
-            if len(episode_data['done']) > self.max_length:
-                episode_data['done'] = episode_data['done'][:self.max_length]
-            
-            self.episodes.append(episode_data)
-
     def discount_cumsum(self, x: np.ndarray) -> np.ndarray:
         """Compute the discounted cumulative sum of rewards.
 
@@ -179,20 +253,11 @@ class ARShotDataset(Dataset):
             discount_cumsum[t] = x[t] + self.gamma * discount_cumsum[t+1]
         return discount_cumsum
 
-    def __len__(self) -> int:
-        """Get the total number of available episodes.
-
-        Returns:
-            The number of episodes available in the dataset.
-        """
-        return len(self.episodes)
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, 
-                                           torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Get an episode by index.
+    def __getitem__(self, index: int) -> tuple:
+        """Get a trajectory by index.
 
         Args:
-            idx: Index of the episode to retrieve.
+            index: Index of the trajectory to retrieve.
 
         Returns:
             A tuple containing:
@@ -202,47 +267,96 @@ class ARShotDataset(Dataset):
                 - d (torch.Tensor): Done flags of shape (max_length,)
                 - timesteps (torch.Tensor): Timestep indices of shape (max_length,)
                 - mask (torch.Tensor): Mask tensor of shape (max_length,)
+
+        Note:
+            For SA sequence format, targets are generated as:
+            - Next token in sequence for most positions
+            - Correct answer for positions where observation is 'shot'
+            Shorter trajectories are padded to max_length with -10 for actions.
         """
-        episode = self.episodes[idx]
+        traj = self.data[index]
         
-        # Convert tokens to indices using the reference environment
-        obs_indices = [self.env.token_to_id.get(token, self.env.token_to_id['pass']) 
-                      for token in episode['obs']]
-        # action_indices = [self.env.token_to_id.get(token, self.env.token_to_id['pass']) 
-        #                  for token in episode['action']]
-        # Handle action indices, with -10 as padding
-        action_indices = []
-        for token in episode['action']:
-            if token == -10:
-                action_indices.append(-10)  # Keep padding value as -10
+        # Get trajectory data
+        obs_tokens = traj['obs']
+        action_tokens = traj['action']
+        rtgs = traj['rtg']
+        dones = traj['done']
+        info = traj['info']
+        
+        # Convert tokens to indices
+        obs_indices = []
+        for token in obs_tokens:
+            obs_indices.append(self.env.token_to_id.get(token, self.env.token_to_id.get('pass', 0)))
+        
+        # For SA format, targets should be the ACTIONS, not next observations
+        # Model learns: when obs="shot" → predict correct_value, otherwise → predict "pass"
+        target_indices = []
+        for i in range(len(obs_tokens)):
+            if i < len(action_tokens):
+                # Use the actual action from the episode
+                action_token = action_tokens[i]
+                if action_token == -10:
+                    target_indices.append(-10)  # Padding
+                else:
+                    target_indices.append(self.env.token_to_id.get(action_token, self.env.token_to_id.get('pass', 0)))
             else:
-                action_indices.append(self.env.token_to_id.get(token, self.env.token_to_id['pass']))
+                # Padding beyond action sequence
+                target_indices.append(-10)
+        
+        length = len(obs_indices)
         
         # Convert to tensors
         s = torch.tensor(obs_indices, dtype=torch.long)
-        a = torch.tensor(action_indices, dtype=torch.long)
-        r = torch.tensor(episode['reward'], dtype=torch.float)
-        d = torch.tensor(episode['done'], dtype=torch.long)
+        a = torch.tensor(target_indices, dtype=torch.long)  # Contains next-token targets
+        rtg = torch.from_numpy(rtgs).float()
+        d = torch.from_numpy(dones).long()
+        timesteps = torch.arange(length, dtype=torch.long)
+        mask = torch.ones(length, dtype=torch.float)
         
-        # Compute return-to-go
-        rtg = torch.from_numpy(self.discount_cumsum(r.numpy())).float()
+        # Ensure RTG and dones have the right length (same as observations)
+        if len(rtg) != length:
+            # Pad or truncate RTG to match observation length
+            if len(rtg) < length:
+                rtg = torch.cat([rtg, torch.zeros(length - len(rtg))])
+            else:
+                rtg = rtg[:length]
         
-        # Create timesteps
-        timesteps = torch.arange(len(s), dtype=torch.long)
+        if len(d) != length:
+            # Pad or truncate dones to match observation length
+            if len(d) < length:
+                d = torch.cat([d, torch.zeros(length - len(d), dtype=torch.long)])
+            else:
+                d = d[:length]
         
-        # Create mask (1 for valid timesteps, 0 for padding)
-        mask = torch.ones(len(s), dtype=torch.float)
+        # Reshape to match expected format
+        s = s.reshape(1, length, 1)
+        a = a.reshape(1, length, 1)
+        rtg = rtg.reshape(1, length, 1)
+        d = d.reshape(1, length, 1)
+        timesteps = timesteps.reshape(1, length, 1)
+        mask = mask.reshape(1, length, 1)
         
-        # Find where padding starts (where we have 'pass' tokens that are padding)
-        # This is a bit tricky since 'pass' can be a legitimate action too
-        # We'll use the done flags to determine valid timesteps
-        for i, done_flag in enumerate(episode['done']):
-            if done_flag and i < len(s) - 1:
-                # Mark subsequent timesteps as padding
-                mask[i+1:] = 0
-                break
+        # Pad if necessary
+        if length < self.max_length:
+            pad_length = self.max_length - length
+            
+            # Pad observations with last observation
+            last_obs = s[:, -1:, :]
+            s = torch.cat([s, last_obs.repeat(1, pad_length, 1)], dim=1)
+            
+            # Pad targets with -10
+            a = F.pad(a, (0, 0, 0, pad_length, 0, 0), value=-10)
+            
+            # Pad other tensors
+            d = F.pad(d, (0, 0, 0, pad_length, 0, 0), value=2)
+            timesteps = F.pad(timesteps, (0, 0, 0, pad_length, 0, 0), value=0)
+            mask = F.pad(mask, (0, 0, 0, pad_length, 0, 0), value=0)
+            rtg = F.pad(rtg, (0, 0, 0, pad_length, 0, 0), value=0)
         
-        return s.unsqueeze(-1), a.unsqueeze(-1), rtg.unsqueeze(-1), d.unsqueeze(-1), timesteps.unsqueeze(-1), mask.unsqueeze(-1)
+        return s.squeeze(0), a.squeeze(0), rtg.squeeze(0), d.squeeze(0), timesteps.squeeze(0), mask.squeeze(0)
+    
+    def __len__(self):
+        return len(self.data)
 
 
 def create_arshot_dataloader(n_pairs: int = 6, shot_mode: str = "after_pairs",
@@ -250,7 +364,7 @@ def create_arshot_dataloader(n_pairs: int = 6, shot_mode: str = "after_pairs",
                             num_episodes: int = 1000, batch_size: int = 32,
                             shuffle: bool = True, num_workers: int = 0,
                             **env_kwargs) -> DataLoader:
-    """Create a DataLoader for ARShot datasets.
+    """Create a DataLoader for ARShot datasets following TMaze pattern.
     
     Args:
         n_pairs: Number of key-value pairs in the environment.
@@ -266,12 +380,22 @@ def create_arshot_dataloader(n_pairs: int = 6, shot_mode: str = "after_pairs",
     Returns:
         A PyTorch DataLoader for the ARShot dataset.
     """
+    # Ensure data is generated
+    ARShot_data_generator(n_pairs=n_pairs, shot_mode=shot_mode, 
+                         num_episodes=num_episodes, max_length=max_length, 
+                         **env_kwargs)
+    
+    # Create dataset path
+    name = f'arshot_n{n_pairs}_{shot_mode}_ep{num_episodes}'
+    data_path = os.path.join(os.getcwd(), 'data', 'ARShot', f"{name}.pickle")
+    
+    # Create dataset
     dataset = ARShotDataset(
+        path=data_path,
+        gamma=gamma,
+        max_length=max_length,
         n_pairs=n_pairs,
         shot_mode=shot_mode,
-        max_length=max_length,
-        gamma=gamma,
-        num_episodes=num_episodes,
         **env_kwargs
     )
     
@@ -285,33 +409,32 @@ def create_arshot_dataloader(n_pairs: int = 6, shot_mode: str = "after_pairs",
 
 
 if __name__ == "__main__":
-    # Test the dataset
-    dataset = ARShotDataset(
+    # Test the restructured dataset
+    print("Testing restructured ARShot dataset...")
+    
+    # Test data generation and loading
+    dataloader = create_arshot_dataloader(
         n_pairs=3,
         shot_mode="after_pairs",
         max_length=20,
-        num_episodes=10,
+        num_episodes=5,
+        batch_size=2,
         deterministic_vocab=True,
         full_universe_vocab=True,
         randomize_pairs=True,
         include_pass_token=True
     )
     
-    # Test getting an episode
-    s, a, rtg, d, timesteps, mask = dataset[0]
-    print(f"Episode 0:")
-    print(f"  Observations shape: {s.shape}")
-    print(f"  Actions shape: {a.shape}")
-    print(f"  RTG shape: {rtg.shape}")
-    print(f"  Done shape: {d.shape}")
-    print(f"  Timesteps shape: {timesteps.shape}")
-    print(f"  Mask shape: {mask.shape}")
+    # Test getting a batch
+    batch = next(iter(dataloader))
+    s, a, rtg, d, timesteps, mask = batch
     
-    # Show first few tokens
-    cutoff = 20
-    print(f"  First 10 obs tokens: {[dataset.env.id_to_token[idx.item()] for idx in s[:cutoff]]}")
-    print(f"  First 10 action tokens: {[dataset.env.id_to_token[idx.item()] for idx in a[:cutoff]]}")
-    print(f"  First 10 rewards: {rtg[:cutoff, 0].tolist()}")
-    print(f"  First 10 done: {d[:cutoff].tolist()}")
-    print(f"  First 10 timesteps: {timesteps[:cutoff].tolist()}")
-    print(f"  First 10 mask: {mask[:cutoff].tolist()}")
+    print(f"Batch shapes:")
+    print(f"  Observations: {s.shape}")
+    print(f"  Targets: {a.shape}")
+    print(f"  RTG: {rtg.shape}")
+    print(f"  Done: {d.shape}")
+    print(f"  Timesteps: {timesteps.shape}")
+    print(f"  Mask: {mask.shape}")
+    
+    print("ARShot dataset restructuring complete!")

@@ -293,13 +293,13 @@ class InferenceHandler(BaseTrainer):
 
         self.model.eval()
         with torch.no_grad():
-            SKIP_RETURN = 1
+            SKIP_RETURN = 10
             seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
             
             # Test different n_pairs configurations
             # n_pairs_configs = [6, 10, 15, 20]
             # shot_modes = ["after_pairs", "after_any_colon"]
-            n_pairs_configs = [5, 20, 50, 100, 250]
+            n_pairs_configs = [2, 20, 50, 100, 250]
             shot_modes = ["after_pairs"]
             
             for n_pairs in n_pairs_configs:
@@ -329,8 +329,7 @@ class InferenceHandler(BaseTrainer):
 
                         if self.wwandb:
                             self.log({
-                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_success_rate": success_rate,
-                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_mean_return": returns_mean
+                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_SR": success_rate,
                             })
                         
                         print(f"n_pairs={n_pairs}, mode={shot_mode}: Success rate = {success_rate:.3f}, Mean return = {returns_mean:.3f}")
