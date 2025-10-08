@@ -20,7 +20,7 @@
 
 RATE (Recurrent Action Transformer with Memory) is a novel offline RL agent designed specifically for solving memory-intensive tasks. The model combines transformer architecture with memory mechanisms to effectively handle long-term dependencies in sequential decision-making tasks. 
 
-Update: The RATE training framework also includes the [ELMUR (External Layer Memory with Update/Rewrite)](offline_rl_baselines/ELMUR) model - a novel memory-augmented transformer architecture designed for long-horizon RL tasks.
+> **Note**: The RATE training framework also includes the [ELMUR (External Layer Memory with Update/Rewrite)](offline_rl_baselines/ELMUR) model - a novel memory-augmented transformer architecture designed for long-horizon RL tasks.
 
 ## Implementation Status
 
@@ -36,7 +36,6 @@ Update: The RATE training framework also includes the [ELMUR (External Layer Mem
 | ✅ | Minigrid-Memory |
 | ✅ | Memory-Maze |
 | ✅ | POPGym |
-| 🔄 | Action-Associative-Retrieval |
 | ✅ | Atari |
 | ✅ | MuJoCo |
 
