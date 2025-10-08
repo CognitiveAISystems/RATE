@@ -18,7 +18,7 @@
 
 ## Overview
 
-RATE (Recurrent Action Transformer with Memory) is a novel offline RL agent designed specifically for solving memory-intensive tasks. The model combines transformer architecture with memory mechanisms to effectively handle long-term dependencies in sequential decision-making tasks.
+RATE (Recurrent Action Transformer with Memory) is a novel offline RL agent designed specifically for solving memory-intensive tasks. The model combines transformer architecture with memory mechanisms to effectively handle long-term dependencies in sequential decision-making tasks. 
 
 ## Implementation Status
 
