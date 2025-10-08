@@ -17,7 +17,7 @@
 
 **ELMUR (ELMUR: External Layer Memory with Update/Rewrite for Long-Horizon RL)** is a novel memory-augmented transformer architecture specifically designed for handling long-term dependencies in sequential decision-making tasks. Unlike traditional transformers that struggle with very long sequences, ELMUR maintains layer-local memory embeddings that persists across time windows and Least Recently Used (LRU) memory update policy, allowing the model to effectively remember and reason over extended contexts.
 
-> **Note**: ELMUR is integrated into the RATE training framework. For installation instructions and detailed task configurations, please see the main directory.
+> **Note**: ELMUR is integrated into the RATE training framework. For installation instructions and detailed task configurations, please see the [main directory](../../).
 
 
 ## Architecture
