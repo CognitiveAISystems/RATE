@@ -82,7 +82,7 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
     mem_tokens = model.mem_tokens.repeat(1, batch_size, 1).detach() if hasattr(model, 'mem_tokens') and model.mem_tokens is not None else None
     saved_context = None
     hidden = model.reset_hidden(batch_size, device) if is_lstm else None
-    memory_states = model.init_memory(batch_size, device) if config["model_mode"] == "MATL" else None
+    memory_states = model.init_memory(batch_size, device) if config["model_mode"] == "ELMUR" else None
 
     for t in tqdm(range(max_ep_len), desc=f"Steps (T={max_ep_len}, corridor={corridor_length}, mode={config['model_mode']})"):
         # Prepare actions and rewards for this step
@@ -98,7 +98,7 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             if t % context_length == 0:
                 mem_tokens = new_mem_tokens
                 saved_context = new_context
-                if config["model_mode"] == "MATL":
+                if config["model_mode"] == "ELMUR":
                     memory_states = new_memory_states
 
         if is_lstm:
@@ -113,8 +113,8 @@ def get_returns_TMaze(model, ret, seeds, episode_timeout, corridor_length, conte
             if act_to_pass is not None and act_to_pass.shape[1] == 0:
                 act_to_pass = None
 
-        # For MATL we use the segment approach as during training
-        if config["model_mode"] == "MATL":
+        # For ELMUR we use the segment approach as during training
+        if config["model_mode"] == "ELMUR":
             # Number of the current segment and position inside the segment
             segment_idx = t // context_length
             pos_in_segment = t % context_length

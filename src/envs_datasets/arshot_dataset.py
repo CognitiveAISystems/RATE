@@ -2,7 +2,7 @@
 ARShot Dataset Class
 
 A PyTorch Dataset for loading and processing ARShot environment trajectories.
-Compatible with the existing RATE/MATL training pipeline.
+Compatible with the existing RATE/ELMUR training pipeline.
 Follows the same structure as TMaze dataset.
 """
 

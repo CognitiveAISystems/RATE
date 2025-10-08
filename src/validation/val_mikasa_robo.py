@@ -87,7 +87,7 @@ def get_returns_MIKASARobo(
     mem_tokens = (model.mem_tokens.repeat(1, envs_num, 1).detach() if model.mem_tokens is not None else None)
     saved_context = None
     hidden = model.reset_hidden(envs_num, device) if is_lstm else None
-    memory_states = model.init_memory(envs_num, device) if config["model_mode"] == "MATL" else None
+    memory_states = model.init_memory(envs_num, device) if config["model_mode"] == "ELMUR" else None
 
     # Initialize variables that will be used in the loop
     new_mem_tokens = mem_tokens
@@ -111,7 +111,7 @@ def get_returns_MIKASARobo(
             if t % context_length == 0:
                 mem_tokens = new_mem_tokens
                 saved_context = new_context
-                if config["model_mode"] == "MATL":
+                if config["model_mode"] == "ELMUR":
                     memory_states = new_memory_states
 
         if is_lstm:
@@ -129,8 +129,8 @@ def get_returns_MIKASARobo(
         
         states_norm = states / 255.0
 
-        # For MATL we use the segment approach as during training
-        if config["model_mode"] == "MATL":
+        # For ELMUR we use the segment approach as during training
+        if config["model_mode"] == "ELMUR":
             # Number of the current segment and position inside the segment
             segment_idx = t // context_length
             pos_in_segment = t % context_length

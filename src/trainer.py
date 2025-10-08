@@ -19,7 +19,7 @@ from offline_rl_baselines.CQL import ConservativeQLearning
 from offline_rl_baselines.IQL import ImplicitQLearning
 from offline_rl_baselines.DLSTM import DecisionLSTM
 from offline_rl_baselines.LSDT import LongShortDecisionTransformer
-from offline_rl_baselines.MATL import MATLModel, MemoryState
+from offline_rl_baselines.ELMUR import ELMURModel, MemoryState
 
 
 class Trainer(BaseTrainer):
@@ -215,14 +215,14 @@ class Trainer(BaseTrainer):
             self.model = DMamba(**self.config["model"])
         elif self.config["model_mode"] == "LSDT":
             self.model = LongShortDecisionTransformer(**self.config["model"])
-        elif self.config["model_mode"] == "MATL":
-            # Add dtype and sequence_format from main config to model config for MATL
-            matl_config = self.config["model"].copy()
-            matl_config["dtype"] = self.config["dtype"]
+        elif self.config["model_mode"] == "ELMUR":
+            # Add dtype and sequence_format from main config to model config for ELMUR
+            elmur_config = self.config["model"].copy()
+            elmur_config["dtype"] = self.config["dtype"]
             # Set default sequence_format if not specified
-            if matl_config.get("sequence_format") is None:
-                matl_config["sequence_format"] = "sra"
-            self.model = MATLModel(**matl_config)
+            if elmur_config.get("sequence_format") is None:
+                elmur_config["sequence_format"] = "sra"
+            self.model = ELMURModel(**elmur_config)
         else:
             raise ValueError(f"Invalid model type: {self.config['model_mode']}")
 
@@ -252,8 +252,8 @@ class Trainer(BaseTrainer):
         
         print(f"Model parameters: {sum(p.numel() for p in list(self.model.parameters()))}")
         print(f"Model dtype: {self.dtype}")
-        if self.config["model_mode"] == "MATL":
-            print(f"MATL sequence format: {getattr(self.model, 'sequence_format', 'sra')}")
+        if self.config["model_mode"] == "ELMUR":
+            print(f"ELMUR sequence format: {getattr(self.model, 'sequence_format', 'sra')}")
             
             # Print memory statistics
             memory_stats = self.model.get_memory_stats()
@@ -705,7 +705,7 @@ class Trainer(BaseTrainer):
                     if self.config.get("reset_hidden_state_batch", True):
                         self.hidden = self.model.reset_hidden(s.size(0), self.device)
 
-                if self.config["model_mode"] == "MATL":
+                if self.config["model_mode"] == "ELMUR":
                     memory_states = self.model.init_memory(s.size(0), self.device)
                 
                 block_part_range = range(self.EFFECTIVE_SIZE_BLOCKS // self.BLOCKS_CONTEXT)
@@ -726,7 +726,7 @@ class Trainer(BaseTrainer):
                         printed = True
 
                     # Optionally detach memory vectors
-                    if self.config["model_mode"] == "MATL" and self.config["model"]["detach_memory"]:
+                    if self.config["model_mode"] == "ELMUR" and self.config["model"]["detach_memory"]:
                         memory_states = [
                             MemoryState(mem.vec.detach(), mem.pos)
                             for mem in memory_states
@@ -757,7 +757,7 @@ class Trainer(BaseTrainer):
                             # Detach hidden state from the computation graph
                             if self.hidden is not None:
                                 self.hidden = tuple(h.detach() for h in self.hidden)
-                        elif self.config["model_mode"] == "MATL":
+                        elif self.config["model_mode"] == "ELMUR":
                             # Calculate pos_offset based on sequence format
                             sequence_format = getattr(self.model, 'sequence_format', 'sra')
                             multiplier = self.model.get_sequence_length_multiplier()

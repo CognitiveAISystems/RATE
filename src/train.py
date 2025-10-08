@@ -149,7 +149,7 @@ class ModelConfig:
     kernel_size: Optional[int] = None  # [5] Kernel size for convolutional layer
     convdim: Optional[int] = None  # [128] Output channel size for convolutional layer
 
-    # Parameters for MATL
+    # Parameters for ELMUR
     d_ff: Optional[int] = None  # [1024] Dimension of feed-forward networks
     memory_size: Optional[int] = None # [16] Number of memory slots
     memory_init_std: Optional[float] = None # [0.01] Standard deviation of memory initialization
@@ -166,11 +166,11 @@ class ModelConfig:
     memory_dropout: Optional[float] = None # [None] Additional dropout for memory updates
     # Maximum sequence length for positional encoding (default: 1000)
     max_seq_len: Optional[int] = None # [1000] Maximum sequence length for positional encoding
-    # Sequence format for MATL (default: "sra")
+    # Sequence format for ELMUR (default: "sra")
     sequence_format: Optional[str] = None # ["sra"] Format: "s" (state only), "sa" (state+action), "sra" (state+rtg+action), "sr" (state+rtg)
-    # Norm type for MATL (default: "layer")
+    # Norm type for ELMUR (default: "layer")
     norm_type: Optional[str] = None # ["layer"] Norm type: "layer" (layer norm), "rmsnorm" (RMS norm)
-    # MoE parameters for MATL
+    # MoE parameters for ELMUR
     use_moe: FlagConversionOff[Optional[bool]] = None     # [False]
     num_experts: Optional[int] = None                     # [8] routed experts
     top_k: Optional[int] = None                           # [2] TOTAL K = K_routed + K_shared
@@ -186,11 +186,11 @@ class ModelConfig:
     routed_d_ff: Optional[int] = None                            # defaults to d_ff if None
     # keep combine identical to DeepSeek-v3 (sum); remove alpha- gating
     
-    # Memory sharing across layers for MATL
-    use_shared_memory: FlagConversionOff[Optional[bool]] = None  # [False] Whether to use single memory matrix for all MATL layers
-    # Relative bias for cross-attention in MATL
+    # Memory sharing across layers for ELMUR
+    use_shared_memory: FlagConversionOff[Optional[bool]] = None  # [False] Whether to use single memory matrix for all ELMUR layers
+    # Relative bias for cross-attention in ELMUR
     use_relative_bias: FlagConversionOff[Optional[bool]] = None  # [True] Whether to use relative positional bias in cross-attention
-    # Cross-attention control for MATL ablation studies
+    # Cross-attention control for ELMUR ablation studies
     use_tok2mem: FlagConversionOff[Optional[bool]] = None  # [True] Whether to use token-to-memory cross-attention (tokens read from memory)
     use_mem2tok: FlagConversionOff[Optional[bool]] = None  # [True] Whether to use memory-to-token cross-attention (memory writes from tokens)
 

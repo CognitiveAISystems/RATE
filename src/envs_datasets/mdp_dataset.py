@@ -2,7 +2,7 @@
 MDP Dataset Class
 
 A PyTorch Dataset for loading and processing MDP environment trajectories.
-Compatible with the existing RATE/MATL training pipeline.
+Compatible with the existing RATE/ELMUR training pipeline.
 """
 
 import torch

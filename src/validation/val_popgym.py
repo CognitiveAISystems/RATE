@@ -68,7 +68,7 @@ def get_returns_POPGym(model, ret, seed, episode_timeout, context_length, device
     mem_tokens = model.mem_tokens.repeat(1, 1, 1).detach() if hasattr(model, 'mem_tokens') and model.mem_tokens is not None else None
     saved_context = None
     hidden = model.reset_hidden(1, device) if is_lstm else None
-    memory_states = model.init_memory(1, device) if config["model_mode"] == "MATL" else None
+    memory_states = model.init_memory(1, device) if config["model_mode"] == "ELMUR" else None
 
     # Initialize variables that will be used in the loop
     new_mem_tokens = mem_tokens
@@ -88,7 +88,7 @@ def get_returns_POPGym(model, ret, seed, episode_timeout, context_length, device
             if t % context_length == 0:
                 mem_tokens = new_mem_tokens
                 saved_context = new_context
-                if config["model_mode"] == "MATL":
+                if config["model_mode"] == "ELMUR":
                     memory_states = new_memory_states
 
         if is_lstm:
@@ -104,8 +104,8 @@ def get_returns_POPGym(model, ret, seed, episode_timeout, context_length, device
             if act_to_pass is not None and act_to_pass.shape[1] == 0:
                 act_to_pass = None
 
-        # For MATL we use the segment approach as during training
-        if config["model_mode"] == "MATL":
+        # For ELMUR we use the segment approach as during training
+        if config["model_mode"] == "ELMUR":
             # Number of the current segment and position inside the segment
             segment_idx = t // context_length
             pos_in_segment = t % context_length

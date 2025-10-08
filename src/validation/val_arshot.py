@@ -36,8 +36,8 @@ def sample(
         mem_tokens: Memory tokens.
         saved_context: Saved context from previous steps.
         hidden: Hidden state for LSTM models.
-        memory_states: Memory states for MATL models.
-        pos_offset: Position offset for MATL models.
+        memory_states: Memory states for ELMUR models.
+        pos_offset: Position offset for ELMUR models.
     
     Returns:
         Tuple containing logits, memory tokens, memory, attention map, hidden state, and memory states.
@@ -140,7 +140,7 @@ def get_returns_ARShot(
     mem_tokens = model.mem_tokens.repeat(1, batch_size, 1).detach() if hasattr(model, 'mem_tokens') and model.mem_tokens is not None else None
     saved_context = None
     hidden = model.reset_hidden(batch_size, device) if is_lstm else None
-    memory_states = model.init_memory(batch_size, device) if config["model_mode"] == "MATL" else None
+    memory_states = model.init_memory(batch_size, device) if config["model_mode"] == "ELMUR" else None
     
     # Initialize variables for context management
     new_mem_tokens = mem_tokens
@@ -161,7 +161,7 @@ def get_returns_ARShot(
             if t % context_length == 0:
                 mem_tokens = new_mem_tokens
                 saved_context = new_context
-                if config["model_mode"] == "MATL":
+                if config["model_mode"] == "ELMUR":
                     memory_states = new_memory_states
         
         # Prepare inputs based on model type
@@ -178,8 +178,8 @@ def get_returns_ARShot(
             if act_to_pass is not None and act_to_pass.shape[1] == 0:
                 act_to_pass = None
         
-        # Calculate position offset for MATL
-        if config["model_mode"] == "MATL":
+        # Calculate position offset for ELMUR
+        if config["model_mode"] == "ELMUR":
             segment_idx = t // context_length
             sequence_format = getattr(model, 'sequence_format', 'sra')
             multiplier = model.get_sequence_length_multiplier()

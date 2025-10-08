@@ -63,7 +63,7 @@ class InferenceHandler(BaseTrainer):
                                 f"Success_rate_S_{text}_x{multiplier}": episode_return,
                             })
                     
-                    if self.config["model_mode"] in ["RATE", "MATL"]:
+                    if self.config["model_mode"] in ["RATE", "ELMUR"]:
                         self.current_metric_value = episode_return
                     else:
                         # self.current_metric_value = episode_return_1x
