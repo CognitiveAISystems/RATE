@@ -2,7 +2,7 @@
 <h3 align="center">Offline RL agent for solving memory-intensive tasks with layer-local memory and Least Recently Used update/rewrite policy</h3>
 
 <div align="center">
-    <a href="https://openreview.net/forum?id=H2dvLYqlaa">
+    <a href="https://arxiv.org/abs/2510.07151">
         <img src="https://img.shields.io/badge/arXiv-2306.09459-b31b1b.svg"/>
     </a>
     <a href="https://elmur-paper.github.io/">
