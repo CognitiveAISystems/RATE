@@ -158,12 +158,14 @@ python src/train.py --data.gamma=1 --data.max-length=105 --data.path-to-dataset=
 If you use ELMUR in your research, please cite:
 
 ```bibtex
-@inproceedings{cherepanov2025elmur,
-    title={{ELMUR}: External Layer Memory with Update/Rewrite for Long-Horizon {RL}},
-    author={Egor Cherepanov and Alexey Kovalev and Aleksandr Panov},
-    booktitle={CoRL 2025 Workshop RemembeRL},
-    year={2025},
-    url={https://openreview.net/forum?id=H2dvLYqlaa}
+@misc{cherepanov2025elmurexternallayermemory,
+      title={ELMUR: External Layer Memory with Update/Rewrite for Long-Horizon RL}, 
+      author={Egor Cherepanov and Alexey K. Kovalev and Aleksandr I. Panov},
+      year={2025},
+      eprint={2510.07151},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2510.07151}, 
 }
 ```
 
