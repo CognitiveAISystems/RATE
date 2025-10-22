@@ -157,7 +157,6 @@ ass-ret.ipynb
 
 build_dt_dataset_streaming.py
 create_pong_env.py
-download_d4rl_datasets.py
 inspect_mujoco_dataset.py
 test_atari.py
 test_mujoco.ipynb
