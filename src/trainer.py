@@ -107,6 +107,11 @@ class Trainer(BaseTrainer):
         self.env = None
         self.hidden = None
 
+        # Initialize environment once at the beginning for environments that support it
+        if any(env in self.env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            from src.validation.val_mujoco import _make_mujoco_env
+            self.env = _make_mujoco_env(self.config["model"]["env_name"], 0)
+
         if self.env_name == 'tmaze':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_tmaze
         elif self.env_name == 'vizdoom':
@@ -123,6 +128,8 @@ class Trainer(BaseTrainer):
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mdp
         elif self.env_name == 'arshot':
             self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_arshot
+        elif any(env in self.env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            self._perform_mini_inference_impl = InferenceHandler.perform_mini_inference_mujoco
 
         self.EFFECTIVE_SIZE_BLOCKS = config["training"]["context_length"] * config["training"]["sections"]
         self.BLOCKS_CONTEXT = config["training"]["context_length"]
@@ -455,6 +462,16 @@ class Trainer(BaseTrainer):
                 ignore_index=-10,
                 label_smoothing=label_smoothing
             )
+        elif any(env in self.env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            loss = F.mse_loss(
+                logits.reshape(-1, logits.size(-1)),
+                target.reshape(-1, logits.size(-1)).float(),
+                reduction='none'
+            )
+            mask = (target.reshape(-1, logits.size(-1)) != -10).float()
+            loss = (loss * mask).sum() / (mask.sum() + 1e-8)
+        else:
+            raise ValueError(f"Unknown environment: {self.env_name}")
 
         additional_metrics = {}
 
@@ -572,9 +589,15 @@ class Trainer(BaseTrainer):
                 episode_timeout=episode_timeout,
                 text=text, env=self.env
             )
+        elif any(env in self.env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            return self._perform_mini_inference_impl(
+                self,
+                episode_timeout=episode_timeout,
+                text=text, env=self.env
+            )
 
     def log_metrics(self, loss, additional_metrics, flag, log_last_segment_only=True):
-        """Log training metrics to wandb.
+        """Log training metrics to both wandb and TensorBoard.
 
         Args:
             loss (torch.Tensor): Main training loss value.
@@ -583,14 +606,12 @@ class Trainer(BaseTrainer):
             log_last_segment_only (bool): Whether to log metrics only for last segment.
 
         Notes:
-            - Only logs if wandb is enabled
+            - Always logs to TensorBoard (if writer exists)
+            - Only logs to wandb if wandb is enabled
             - Filters out None values from metrics
             - Converts tensor metrics to scalar values
             - Respects log_last_segment_only setting
         """
-        if not self.wwandb:
-            return
-            
         should_log = (not log_last_segment_only) or (log_last_segment_only and flag == 1)
         
         if should_log:
@@ -824,11 +845,11 @@ class Trainer(BaseTrainer):
                             v_value=v_value, iql_loss=iql_loss, aux_loss=aux_loss
                         )
 
-                        if self.wwandb:
-                            self.log_metrics(
-                                loss=loss, additional_metrics=additional_metrics, 
-                                flag=flag, log_last_segment_only=self.log_last_segment_loss_only
-                            )
+                        # Always log metrics (to both TensorBoard and wandb if enabled)
+                        self.log_metrics(
+                            loss=loss, additional_metrics=additional_metrics, 
+                            flag=flag, log_last_segment_only=self.log_last_segment_loss_only
+                        )
 
                     if is_train:
                         # For IQL, optimization is already done in the update method
@@ -887,7 +908,9 @@ class Trainer(BaseTrainer):
                                 text=f"timeout_{timeout}", env=self.env
                             )
 
-                    elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')) or self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1']:
+                    elif any(char in self.env_name for char in ('vizdoom', 'minigrid_memory', 'memory_maze', 'popgym', 'mikasa_robo')) \
+                        or self.env_name in ['CartPole-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Acrobot-v1', 'Pendulum-v1'] \
+                        or any(env in self.env_name for env in ["hopper", "halfcheetah", "walker2d"]):
                         if "mikasa_robo" in self.env_name:
                             # Due to the peculiarities of GPU usage in ManiSkill3, we have to initialize
                             # the inference function in a separate way
@@ -985,6 +1008,7 @@ class Trainer(BaseTrainer):
         if hasattr(self, 'writer'):
             self.writer.close()
         if hasattr(self, 'env') and self.env is not None:
+            print(f"Closing {self.env_name} environment...")
             self.env.close()
             self.env = None
         if torch.cuda.is_available():

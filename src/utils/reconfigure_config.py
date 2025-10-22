@@ -1,3 +1,5 @@
+from typing import Tuple
+
 def add_env_specific_info_to_config(config: dict) -> dict:
     """Add environment-specific configuration parameters to the config dictionary.
 
@@ -72,7 +74,7 @@ def add_env_specific_info_to_config(config: dict) -> dict:
 
     return config
 
-def configure_model_architecture(config: dict) -> tuple[int, int]:
+def configure_model_architecture(config: dict) -> Tuple[int, int]:
     """Configure model architecture and mode settings.
     
     This function sets up the model architecture based on the selected mode

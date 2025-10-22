@@ -5,8 +5,16 @@ import string
 from itertools import product
 from typing import Dict, List, Optional, Tuple
 
-import gymnasium as gym
-from gymnasium import spaces
+try:
+    import gymnasium as gym
+except ImportError:
+    gymnasium = None
+    import gym as gym
+try:
+    from gymnasium import spaces
+except ImportError:
+    spaces = None
+    from gym import spaces
 
 
 class ARShotEnv(gym.Env):

@@ -32,5 +32,7 @@ class RTGEncoder(nn.Module):
         elif env_name == 'arshot':
             # ARShot environment
             self.rtg_encoder = nn.Linear(1, d_embed)
+        elif any(env in env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            self.rtg_encoder = nn.Linear(1, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

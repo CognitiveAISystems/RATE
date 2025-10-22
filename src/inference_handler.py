@@ -53,15 +53,15 @@ class InferenceHandler(BaseTrainer):
 
                     episode_return = sum(rewards)/batch_size
 
-                    if self.wwandb:
-                        if text is None:
-                            self.log({
-                                f"Success_rate_T_{multiplier}": episode_return,
-                            })
-                        else:
-                            self.log({
-                                f"Success_rate_S_{text}_x{multiplier}": episode_return,
-                            })
+                    # Always log metrics to TensorBoard (and wandb if enabled)
+                    if text is None:
+                        self.log({
+                            f"Success_rate_T_{multiplier}": episode_return,
+                        })
+                    else:
+                        self.log({
+                            f"Success_rate_S_{text}_x{multiplier}": episode_return,
+                        })
                     
                     if self.config["model_mode"] in ["RATE", "ELMUR"]:
                         self.current_metric_value = episode_return
@@ -105,11 +105,11 @@ class InferenceHandler(BaseTrainer):
                     returns_mean = np.mean(returns)
                     lifetime_mean = np.mean(ts)
 
-                    if self.wwandb:
-                        self.log({
-                            f"LifeTimeMean_{color}_{ret}": lifetime_mean, 
-                            f"ReturnsMean_{color}_{ret}": returns_mean
-                        })
+                    # Always log metrics to TensorBoard (and wandb if enabled)
+                    self.log({
+                        f"LifeTimeMean_{color}_{ret}": lifetime_mean, 
+                        f"ReturnsMean_{color}_{ret}": returns_mean
+                    })
 
                 return returns, ts
 
@@ -131,11 +131,11 @@ class InferenceHandler(BaseTrainer):
             total_returns = np.mean(total_returns)
             total_ts = np.mean(total_ts)
 
-            if self.wwandb:
-                self.log({
-                    f"LifeTimeMean_{self.config['online_inference']['desired_return_1']}": total_ts, 
-                    f"ReturnsMean_{self.config['online_inference']['desired_return_1']}": total_returns
-                })
+            # Always log metrics to TensorBoard (and wandb if enabled)
+            self.log({
+                f"LifeTimeMean_{self.config['online_inference']['desired_return_1']}": total_ts, 
+                f"ReturnsMean_{self.config['online_inference']['desired_return_1']}": total_returns
+            })
             self.current_metric_value = total_returns
 
     @staticmethod
@@ -183,12 +183,12 @@ class InferenceHandler(BaseTrainer):
                     returns_max = np.max(returns)
                     lifetime_mean = np.mean(ts)
 
-                    if self.wwandb:
-                        self.log({
-                            f"LifeTimeMean_r_{ret}_l_{LENGTH}": lifetime_mean,
-                            f"ReturnsMax_r_{ret}_l_{LENGTH}": returns_max,
-                            f"ReturnsMean_r_{ret}_l_{LENGTH}": returns_mean
-                        })
+                    # Always log metrics to TensorBoard (and wandb if enabled)
+                    self.log({
+                        f"LifeTimeMean_r_{ret}_l_{LENGTH}": lifetime_mean,
+                        f"ReturnsMax_r_{ret}_l_{LENGTH}": returns_max,
+                        f"ReturnsMean_r_{ret}_l_{LENGTH}": returns_mean
+                    })
                 if LENGTH == 41:
                     returns_mean_41 = returns_mean
                 if LENGTH == 91:
@@ -235,11 +235,11 @@ class InferenceHandler(BaseTrainer):
                 returns_max = np.max(returns)
                 lifetime_mean = np.mean(ts)
 
-                if self.wwandb:
-                    self.log({
-                        f"LifeTimeMean_{ret}": lifetime_mean,
-                        f"ReturnsMax_{ret}": returns_max,
-                        f"ReturnsMean_{ret}": returns_mean})
+                # Always log metrics to TensorBoard (and wandb if enabled)
+                self.log({
+                    f"LifeTimeMean_{ret}": lifetime_mean,
+                    f"ReturnsMax_{ret}": returns_max,
+                    f"ReturnsMean_{ret}": returns_mean})
                 self.current_metric_value = returns_mean
                     
     @staticmethod
@@ -278,11 +278,11 @@ class InferenceHandler(BaseTrainer):
                 returns_max = np.max(returns)
                 lifetime_mean = np.mean(ts)
 
-                if self.wwandb:
-                    self.log({
-                        f"LifeTimeMean_{ret}": lifetime_mean,
-                        f"ReturnsMax_{ret}": returns_max,
-                        f"ReturnsMean_{ret}": returns_mean})
+                # Always log metrics to TensorBoard (and wandb if enabled)
+                self.log({
+                    f"LifeTimeMean_{ret}": lifetime_mean,
+                    f"ReturnsMax_{ret}": returns_max,
+                    f"ReturnsMean_{ret}": returns_mean})
                 self.current_metric_value = returns_mean
 
         self.model.to(self.device)
@@ -327,10 +327,10 @@ class InferenceHandler(BaseTrainer):
                         returns_mean = np.mean(episode_returns)
                         success_rate = np.mean([1.0 if r == 1.0 else 0.0 for r in episode_returns])
 
-                        if self.wwandb:
-                            self.log({
-                                f"ARShot_n_pairs_{n_pairs}_{shot_mode}_SR": success_rate,
-                            })
+                        # Always log metrics to TensorBoard (and wandb if enabled)
+                        self.log({
+                            f"ARShot_n_pairs_{n_pairs}_{shot_mode}_SR": success_rate,
+                        })
                         
                         print(f"n_pairs={n_pairs}, mode={shot_mode}: Success rate = {success_rate:.3f}, Mean return = {returns_mean:.3f}")
                         
@@ -395,12 +395,12 @@ class InferenceHandler(BaseTrainer):
 
                 for k, v in metrics_maniskill.items():
                     metrics_maniskill[k] = np.mean(v)
-                if self.wwandb:
-                    print(f"Metrics: {metrics_maniskill}")
-                    for k, v in metrics_maniskill.items():
-                        self.log({f"eval/eval_{k}_mean": v})
-                    self.log({f"eval/return_to_go": ret})
-                    self.log({"success_once": metrics_maniskill['success_once']})
+                # Always log metrics to TensorBoard (and wandb if enabled)
+                print(f"Metrics: {metrics_maniskill}")
+                for k, v in metrics_maniskill.items():
+                    self.log({f"eval_{k}_mean": v})
+                self.log({f"return_to_go": ret})
+                self.log({f"success_once": metrics_maniskill['success_once']})
                 self.current_metric_value = metrics_maniskill['success_once']
         
         torch.cuda.empty_cache()
@@ -443,12 +443,75 @@ class InferenceHandler(BaseTrainer):
                 returns_max = np.max(returns)
                 lifetime_mean = np.mean(ts)
 
-                if self.wwandb:
-                    self.log({
-                        f"LifeTimeMean_{ret}": lifetime_mean,
-                        f"ReturnsMax_{ret}": returns_max,
-                        f"ReturnsMean_{ret}": returns_mean})
+                # Always log metrics to TensorBoard (and wandb if enabled)
+                self.log({
+                    f"LifeTimeMean_{ret}": lifetime_mean,
+                    f"ReturnsMax_{ret}": returns_max,
+                    f"ReturnsMean_{ret}": returns_mean})
                 self.current_metric_value = returns_mean
 
         self.model.to(self.device)
 
+    @staticmethod
+    def perform_mini_inference_mujoco(self, episode_timeout, text=None, env=None):
+        from src.validation.val_mujoco import get_returns_MuJoCo
+
+        self.model.eval()
+        with torch.no_grad():
+            SKIP_RETURN = 20
+            seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
+            total_rew_mm = 0
+            cnt = 1
+            
+            for ret in [self.config["online_inference"]["desired_return_1"]]:
+                returns = []
+                ts = []
+                for i in range(len(seeds)):
+                    # Reset environment with new seed instead of creating new env
+                    if env is not None:
+                        try:
+                            env.seed(seeds[i])  # Set seed for this episode
+                        except Exception:
+                            pass  # Some envs don't support seed() method
+                    
+                    episode_return, t, frames_out = \
+                        get_returns_MuJoCo(
+                            model=self.model, 
+                            ret=ret, 
+                            seed=seeds[i],
+                            episode_timeout=episode_timeout,
+                            context_length=self.config["training"]["context_length"], 
+                            device=self.device,
+                            config=self.config,
+                            use_argmax=self.config["online_inference"]["use_argmax"],
+                            create_video=False,
+                            env=env,  # Pass the environment from trainer
+                            normalize_obs=True  # Enable normalization during inference
+                        )
+
+                    returns.append(episode_return)
+                    ts.append(t)
+                    total_rew_mm += episode_return
+                    curr_mean_ret = total_rew_mm / cnt
+                    cnt += 1
+                    self.pbar.set_description(f"Online inference_{ret}: [{i+1} / {len(seeds)}] Time: {t}, Return: {episode_return:.2f}, Total Return: {total_rew_mm:.2f}, Current Mean Return: {curr_mean_ret:.2f}")
+
+                returns_mean = np.mean(returns)
+                returns_max = np.max(returns)
+                lifetime_mean = np.mean(ts)
+
+                # Track maximum mean return achieved so far
+                if not hasattr(self, 'max_mean_return'):
+                    self.max_mean_return = returns_mean
+                else:
+                    self.max_mean_return = max(self.max_mean_return, returns_mean)
+
+                # Always log metrics to TensorBoard (and wandb if enabled)
+                self.log({
+                    f"inference/LifeTimeMean": lifetime_mean,
+                    f"inference/ReturnsMax": returns_max,
+                    f"inference/ReturnsMean": returns_mean,
+                    f"inference/MaxMeanReturn": self.max_mean_return})
+                self.current_metric_value = returns_mean
+
+        self.model.to(self.device)

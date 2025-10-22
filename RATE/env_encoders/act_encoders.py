@@ -49,5 +49,7 @@ class ActEncoder(nn.Module):
             # ARShot environment with token-based actions
             # act_dim is actually the vocab_size for token embeddings
             self.act_encoder = nn.Sequential(nn.Embedding(act_dim+1, d_embed), nn.Tanh())
+        elif any(env in env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            self.act_encoder = nn.Sequential(nn.Linear(act_dim, d_embed), nn.Tanh())
         else:
             raise ValueError(f"Unknown environment: {env_name}")

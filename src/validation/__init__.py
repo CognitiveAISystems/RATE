@@ -37,3 +37,8 @@ try:
     from .val_mdp import get_returns_MDP
 except Exception:
     get_returns_MDP = None
+
+try:
+    from .val_mujoco import get_returns_MuJoCo
+except Exception:
+    get_returns_MuJoCo = None

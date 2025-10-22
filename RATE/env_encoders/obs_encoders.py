@@ -80,5 +80,7 @@ class ObsEncoder(nn.Module):
             # ARShot environment with token-based observations
             # state_dim is actually the vocab_size for token embeddings
             self.obs_encoder = nn.Embedding(state_dim+1, d_embed)
+        elif any(env in env_name for env in ["hopper", "halfcheetah", "walker2d"]):
+            self.obs_encoder = nn.Linear(state_dim, d_embed)
         else:
             raise ValueError(f"Unknown environment: {env_name}")

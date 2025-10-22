@@ -12,7 +12,11 @@ import os
 import json
 from tqdm import tqdm
 from typing import Tuple, Optional, Dict, Any
-import gymnasium as gym
+try:
+    import gymnasium as gym
+except ImportError:
+    gymnasium = None
+    import gym as gym
 
 
 class MDPDataset(Dataset):

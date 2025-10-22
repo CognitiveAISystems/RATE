@@ -257,5 +257,22 @@ def create_dataloader(config: dict, max_length: int, segment_length: int) -> Dat
 
         return train_dataloader
     
+    elif any(env in config["model"]["env_name"] for env in ["hopper", "halfcheetah", "walker2d"]):
+        from src.envs_datasets.mujoco_dataset import create_mujoco_dataloader
+        train_dataloader = create_mujoco_dataloader(
+            pkl_path=config["data"]["path_to_dataset"],           # e.g. data/mujoco/halfcheetah-expert-v2.pkl
+            sequence_length=max_length,
+            batch_size=config["training"]["batch_size"],
+            gamma=config["data"]["gamma"],
+            crop_mode="sliding", 
+            stride=None,         
+            drop_short=True,
+            normalize_obs=True,
+            num_workers=8,
+            shuffle=True,
+            pin_memory=True,
+        )
+        return train_dataloader
+    
     else:
         raise ValueError(f"Unknown environment: {config['model']['env_name']}")

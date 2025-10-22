@@ -42,3 +42,9 @@ try:
 except ImportError:
     ARShotDataset = None
     raise ImportError("ARShotDataset is not found")
+
+try:
+    from .mujoco_dataset import create_mujoco_dataloader
+except ImportError:
+    create_mujoco_dataloader = None
+    raise ImportError("create_mujoco_dataloader is not found")
