@@ -166,3 +166,4 @@ test_gifs/*
 PongNoFrameskip-v4/
 decision-transformer/
 run_experiments/test_mujoco*.sh
+=12
