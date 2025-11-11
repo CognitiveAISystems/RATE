@@ -156,7 +156,7 @@ class MixtureOfExperts(nn.Module):
         batch_size, seq_len, top_k = gates.shape
         
         # Count how many tokens are routed to each expert
-        expert_counts = torch.zeros(self.num_experts, device=gates.device)
+        expert_counts = torch.zeros(self.num_experts, device=gates.device, dtype=gates.dtype)
         for expert_idx in range(self.num_experts):
             expert_mask = (indices == expert_idx).float()
             expert_counts[expert_idx] = expert_mask.sum()
@@ -166,7 +166,7 @@ class MixtureOfExperts(nn.Module):
         expert_fractions = expert_counts / total_tokens
         
         # Calculate the average gate value for each expert
-        gate_sums = torch.zeros(self.num_experts, device=gates.device)
+        gate_sums = torch.zeros(self.num_experts, device=gates.device, dtype=gates.dtype)
         for expert_idx in range(self.num_experts):
             expert_mask = (indices == expert_idx).float()
             gate_sums[expert_idx] = (gates * expert_mask).sum()

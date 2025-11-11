@@ -465,10 +465,10 @@ class Trainer(BaseTrainer):
         elif any(env in self.env_name for env in ["hopper", "halfcheetah", "walker2d"]):
             loss = F.mse_loss(
                 logits.reshape(-1, logits.size(-1)),
-                target.reshape(-1, logits.size(-1)).float(),
+                target.reshape(-1, logits.size(-1)).to(dtype=self.dtype),
                 reduction='none'
             )
-            mask = (target.reshape(-1, logits.size(-1)) != -10).float()
+            mask = (target.reshape(-1, logits.size(-1)) != -10).to(dtype=self.dtype)
             loss = (loss * mask).sum() / (mask.sum() + 1e-8)
         else:
             raise ValueError(f"Unknown environment: {self.env_name}")

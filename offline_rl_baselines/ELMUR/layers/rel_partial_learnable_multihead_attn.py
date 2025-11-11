@@ -38,7 +38,7 @@ class RelPartialLearnableMultiHeadAttn(nn.Module):
         x = x_padded[1:].view_as(x)
         
         if zero_triu:
-            ones = torch.ones((x.size(0), x.size(1)))
+            ones = torch.ones((x.size(0), x.size(1)), device=x.device, dtype=x.dtype)
             x = x * torch.tril(ones, x.size(1) - x.size(0))[:,:,None,None]
         
         return x

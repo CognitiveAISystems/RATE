@@ -340,8 +340,9 @@ def get_returns_MuJoCo(
         act = torch.max(torch.min(act, act_high), act_low)  # clamp to bounds
         actions[-1] = act
 
-        # Step env
-        ns, reward, done, info = env.step(act.detach().cpu().numpy())
+        # Step env - convert to float32 for numpy compatibility
+        act_numpy = act.detach().cpu().float().numpy()
+        ns, reward, done, info = env.step(act_numpy)
         if isinstance(ns, tuple):
             ns = ns[0]
         ns = np.asarray(ns, dtype=np.float32)

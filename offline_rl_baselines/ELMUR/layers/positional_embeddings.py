@@ -118,7 +118,7 @@ class RoPEPositionalEmbedding(nn.Module):
             raise ValueError(f"head_dim must be even for RoPE, got {head_dim}")
             
         # Calculate how much to rotate based on position
-        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2).float() / head_dim))
+        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, dtype=torch.float32).float() / head_dim))
         self.register_buffer('inv_freq', inv_freq)
         
         # Precompute rotation matrices for efficiency
@@ -127,7 +127,7 @@ class RoPEPositionalEmbedding(nn.Module):
     def _precompute_rotations(self, max_seq_len: int):
         """Precompute cos and sin values for all positions up to max_seq_len"""
         # positions shape: [max_seq_len]
-        positions = torch.arange(max_seq_len, dtype=torch.float)
+        positions = torch.arange(max_seq_len, dtype=torch.float32)
         
         # freqs shape: [max_seq_len, d_model // 2]
         freqs = torch.outer(positions, self.inv_freq)
@@ -266,7 +266,7 @@ class YaRNPositionalEmbedding(nn.Module):
         self.beta = beta
         
         # Compute base inverse frequencies for head_dim // 2
-        inv_freq = 1.0 / (base ** (torch.arange(0, self.half).float() / self.half))
+        inv_freq = 1.0 / (base ** (torch.arange(0, self.half, dtype=torch.float32).float() / self.half))
         
         # Apply YaRN scaling
         s = float(L_ext) / float(L_train)
@@ -304,7 +304,7 @@ class YaRNPositionalEmbedding(nn.Module):
         T = max(needed_len, self.max_seq_len * 2 if self.max_seq_len else needed_len)
         
         # Compute positions and frequencies
-        pos = torch.arange(T, device=device, dtype=torch.float32)
+        pos = torch.arange(T, device=device, dtype=dtype)
         freqs = torch.outer(pos, self.inv_freq)  # [T, half]
         
         # Cache cos and sin

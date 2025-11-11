@@ -601,8 +601,8 @@ class ELMURModel(nn.Module):
             raise ValueError(f"Unknown positional encoding: {self.pos_type}. Choose from: relative, sinusoidal, learnable, rope, yarn, alibi")
         
         if self.pos_type == "relative":
-            self.r_w_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head))
-            self.r_r_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head))
+            self.r_w_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head, dtype=self.dtype))
+            self.r_r_bias = nn.Parameter(torch.zeros(self.num_heads, self.d_head, dtype=self.dtype))
         else:
             self.register_parameter("r_w_bias", None)
             self.register_parameter("r_r_bias", None)
@@ -692,7 +692,7 @@ class ELMURModel(nn.Module):
             B, B1, _ = states.shape
         
         if reshape_required:
-            states = states.reshape(-1, C, H, W).type(torch.float32).contiguous()
+            states = states.reshape(-1, C, H, W).to(dtype=self.dtype).contiguous()
 
         if use_long:
             states = states.squeeze(2)
@@ -826,12 +826,14 @@ class ELMURModel(nn.Module):
         state_embeddings = self.state_encoder(states)
         if reshape_required:
             state_embeddings = state_embeddings.reshape(B, B1, self.d_embed)
-        rtg_embeddings = self.ret_emb(rtgs)
+        # Ensure embeddings are in the correct dtype
+        state_embeddings = state_embeddings.to(dtype=self.dtype)
+        rtg_embeddings = self.ret_emb(rtgs).to(dtype=self.dtype)
 
         # Encode actions if needed
         action_embeddings = None
         if actions is not None and self.sequence_format in ["sa", "sra"]:
-            action_embeddings = self.encode_actions(actions)
+            action_embeddings = self.encode_actions(actions).to(dtype=self.dtype)
         
         # Create token sequence based on format
         token_embeddings = self.create_token_sequence(
@@ -879,8 +881,8 @@ class ELMURModel(nn.Module):
             tok = tok.transpose(0, 1)  # [T,B,D] - seq_first format
             
             pos_seq = torch.arange(pos_offset + qlen - 1, pos_offset - 1, -1.0, 
-                                 device=tok.device, dtype=tok.dtype)
-            pos_emb = self.pos_emb(pos_seq).to(dtype=tok.dtype)  # [qlen, 1, D]
+                                 device=tok.device, dtype=self.dtype)
+            pos_emb = self.pos_emb(pos_seq).to(dtype=self.dtype)  # [qlen, 1, D]
             core_out = self.drop(tok)
             pos_emb = self.drop(pos_emb)
         elif self.pos_type == "rope":
@@ -902,9 +904,9 @@ class ELMURModel(nn.Module):
             if self.pos_type == "learnable":
                 pos_indices = torch.arange(seq_len, device=tok.device)
                 pos_indices = torch.clamp(pos_indices, 0, self.max_seq_len - 1)
-                pos_emb_abs = self.pos_emb(pos_indices).to(dtype=tok.dtype).unsqueeze(0)
+                pos_emb_abs = self.pos_emb(pos_indices).to(dtype=self.dtype).unsqueeze(0)
             else:
-                pos_emb_abs = self.pos_emb(seq_len).to(tok.device, dtype=tok.dtype).unsqueeze(0)
+                pos_emb_abs = self.pos_emb(seq_len).to(tok.device, dtype=self.dtype).unsqueeze(0)
                 
             tok = tok + pos_emb_abs
             core_out = self.drop(tok).transpose(0, 1)  # [T, B, D]
