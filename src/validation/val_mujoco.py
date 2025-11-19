@@ -372,8 +372,10 @@ def get_returns_MuJoCo(
             except Exception:
                 pass
 
-        if done:
-            break
+        # Don't break on done - MuJoCo tasks should run for full episode_timeout
+        # Uncomment the next two lines if you want to allow early termination
+        # if done:
+        #     break
 
     # Optional GIF
     frames_out = None
