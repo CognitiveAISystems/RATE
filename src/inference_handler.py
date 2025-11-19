@@ -458,7 +458,7 @@ class InferenceHandler(BaseTrainer):
 
         self.model.eval()
         with torch.no_grad():
-            SKIP_RETURN = 10
+            SKIP_RETURN = 4
             seeds = np.arange(0, 100).tolist()[::SKIP_RETURN]
             total_rew_mm = 0
             cnt = 1
