@@ -40,7 +40,7 @@ echo "Seed: $SEED"
 # * Small parameters to run test
 python Elastic-DT/scripts/train_edt_vizdoom.py \
     --dataset_dir "$DATASET_DIR" \
-    --context_len 50 \
+    --context_len 150 \
     --n_blocks 2 \
     --embed_dim 32 \
     --n_heads 2 \
@@ -53,7 +53,7 @@ python Elastic-DT/scripts/train_edt_vizdoom.py \
     --max_train_iters 500 \
     --num_updates_per_iter 100 \
     --model_save_iters 2 \
-    --rtg_scale 1000 \
+    --rtg_scale 1 \
     --num_bin 60 \
     --expectile 0.99 \
     --exp_loss_weight 0.5 \

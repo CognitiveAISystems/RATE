@@ -19,30 +19,12 @@ echo "Number of episodes: $NUM_EPISODES"
 echo "Seed: $SEED"
 
 # * Initial parameters
-# python Elastic-DT/scripts/eval_edt_vizdoom.py \
-#     --checkpoint_path "$CHECKPOINT_PATH" \
-#     --context_len 50 \
-#     --n_blocks 4 \
-#     --embed_dim 128 \
-#     --n_heads 4 \
-#     --dropout_p 0.1 \
-#     --act_dim 5 \
-#     --num_bin 60 \
-#     --rtg_scale 1000 \
-#     --target_return 56.5 \
-#     --num_eval_episodes "$NUM_EPISODES" \
-#     --episode_timeout 150 \
-#     --seed "$SEED" \
-#     --device cuda \
-#     --save_results
-
-# * Small parameters to run test
 python Elastic-DT/scripts/eval_edt_vizdoom.py \
     --checkpoint_path "$CHECKPOINT_PATH" \
     --context_len 50 \
-    --n_blocks 2 \
-    --embed_dim 32 \
-    --n_heads 2 \
+    --n_blocks 4 \
+    --embed_dim 128 \
+    --n_heads 4 \
     --dropout_p 0.1 \
     --act_dim 5 \
     --num_bin 60 \
@@ -53,6 +35,25 @@ python Elastic-DT/scripts/eval_edt_vizdoom.py \
     --seed "$SEED" \
     --device cuda \
     --save_results
+
+# * Small parameters to run test
+# python Elastic-DT/scripts/eval_edt_vizdoom.py \
+#     --checkpoint_path "$CHECKPOINT_PATH" \
+#     --context_len 150 \
+#     --n_blocks 2 \
+#     --embed_dim 32 \
+#     --n_heads 2 \
+#     --dropout_p 0.1 \
+#     --act_dim 5 \
+#     --num_bin 60 \
+#     --rtg_scale 1 \
+#     --target_return 56.5 \
+#     --num_eval_episodes "$NUM_EPISODES" \
+#     --episode_timeout 150 \
+#     --seed "$SEED" \
+#     --device cuda \
+#     --use_pillar_seeds \
+#     --save_results
 
 echo "Evaluation complete!"
 
