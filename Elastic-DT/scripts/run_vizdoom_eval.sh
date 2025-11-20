@@ -22,18 +22,19 @@ echo "Seed: $SEED"
 python Elastic-DT/scripts/eval_edt_vizdoom.py \
     --checkpoint_path "$CHECKPOINT_PATH" \
     --context_len 50 \
-    --n_blocks 4 \
+    --n_blocks 6 \
     --embed_dim 128 \
-    --n_heads 4 \
+    --n_heads 8 \
     --dropout_p 0.1 \
     --act_dim 5 \
     --num_bin 60 \
-    --rtg_scale 1000 \
+    --rtg_scale 1 \
     --target_return 56.5 \
     --num_eval_episodes "$NUM_EPISODES" \
-    --episode_timeout 150 \
+    --episode_timeout 4200 \
     --seed "$SEED" \
     --device cuda \
+    --use_pillar_seeds \
     --save_results
 
 # * Small parameters to run test
