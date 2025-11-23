@@ -256,11 +256,25 @@ class Trainer(BaseTrainer):
 
         self.raw_model = self.model.module if hasattr(self.model, "module") else self.model
         
-        
-        print(f"Model parameters: {sum(p.numel() for p in list(self.model.parameters()))}")
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print(f"Model parameters: {total_params:,} (trainable: {trainable_params:,})")
         print(f"Model dtype: {self.dtype}")
         if self.config["model_mode"] == "ELMUR":
             print(f"ELMUR sequence format: {getattr(self.model, 'sequence_format', 'sra')}")
+            
+            # Debug: Check if lru_alpha is in optimizer parameters
+            if self.config["model"].get("learnable_lru_alpha", False):
+                lru_params_in_optimizer = []
+                for group in self.optimizer.param_groups:
+                    for p in group['params']:
+                        if hasattr(self.model, 'layers') and len(self.model.layers) > 0:
+                            if p is self.model.layers[0].lru_alpha_logit:
+                                lru_params_in_optimizer.append(p)
+                if lru_params_in_optimizer:
+                    print(f"\033[1;92m✓ lru_alpha_logit found in optimizer parameters\033[0m")
+                else:
+                    print(f"\033[1;91m✗ WARNING: lru_alpha_logit NOT found in optimizer parameters!\033[0m")
             
             # Print memory statistics
             memory_stats = self.model.get_memory_stats()
@@ -277,7 +291,25 @@ class Trainer(BaseTrainer):
             lru_enabled = memory_stats.get('use_lru', 'N/A')
             print(f"LRU replacement policy: {lru_enabled}")
             if lru_enabled:
-                print(f"LRU blend alpha: {memory_stats.get('lru_blend_alpha', 'N/A')}")
+                learnable = memory_stats.get('learnable_lru_alpha', False)
+                alpha_value = memory_stats.get('lru_blend_alpha', 'N/A')
+                detach_memory = self.config["model"].get("detach_memory", True)
+                
+                if learnable:
+                    print(f"LRU blend alpha: {alpha_value} (learnable parameter - will be optimized during training)")
+                    # Show the raw logit value for debugging
+                    if hasattr(self.model.layers[0], 'lru_alpha_logit') and self.model.layers[0].lru_alpha_logit is not None:
+                        logit_val = self.model.layers[0].lru_alpha_logit.item()
+                        print(f"  Initial logit value: {logit_val:.4f}, requires_grad: {self.model.layers[0].lru_alpha_logit.requires_grad}")
+                else:
+                    print(f"LRU blend alpha: {alpha_value} (fixed)")
+                
+                # Info about memory handling
+                if not detach_memory:
+                    print(f"  \033[1;92mℹ detach_memory=False: Memory cloning enabled to preserve gradients\033[0m")
+                    print(f"  \033[1;92mℹ Loss accumulated across segments (no retain_graph issues)\033[0m")
+                else:
+                    print(f"  ℹ detach_memory=True: Memory detached between segments (saves GPU memory)")
             else:
                 print("Using direct memory replacement (no slot-based replacement)")
             
@@ -729,6 +761,15 @@ class Trainer(BaseTrainer):
                 if self.config["model_mode"] == "ELMUR":
                     memory_states = self.model.init_memory(s.size(0), self.device)
                 
+                # For learnable lru_alpha OR when detach_memory=False, we need to accumulate loss
+                learnable_alpha = (self.config["model_mode"] == "ELMUR" and 
+                                 self.config["model"].get("learnable_lru_alpha", False))
+                detach_memory = (self.config["model_mode"] == "ELMUR" and
+                                self.config["model"].get("detach_memory", True))
+                # Accumulate loss when memory is not detached to avoid retain_graph issues
+                should_accumulate_loss = (self.config["model_mode"] == "ELMUR" and not detach_memory)
+                accumulated_loss = None
+                
                 block_part_range = range(self.EFFECTIVE_SIZE_BLOCKS // self.BLOCKS_CONTEXT)
                 
                 for block_part in block_part_range:
@@ -746,12 +787,24 @@ class Trainer(BaseTrainer):
                         not_b = True
                         printed = True
 
-                    # Optionally detach memory vectors
-                    if self.config["model_mode"] == "ELMUR" and self.config["model"]["detach_memory"]:
-                        memory_states = [
-                            MemoryState(mem.vec.detach(), mem.pos)
-                            for mem in memory_states
-                        ]
+                    # Handle memory between segments based on configuration
+                    if self.config["model_mode"] == "ELMUR":
+                        learnable_alpha = self.config["model"].get("learnable_lru_alpha", False)
+                        detach_memory = self.config["model"].get("detach_memory", True)
+                        
+                        if detach_memory:
+                            # Detach memory - breaks gradient flow but saves memory
+                            memory_states = [
+                                MemoryState(mem.vec.detach(), mem.pos)
+                                for mem in memory_states
+                            ]
+                        else:
+                            # Don't detach BUT use clone() to avoid inplace modification issues
+                            # This preserves gradients through memory while avoiding RuntimeError
+                            memory_states = [
+                                MemoryState(mem.vec.clone(), mem.pos.clone())
+                                for mem in memory_states
+                            ]
 
 
                     # print the index of the tensor where the first element is not equal to 0
@@ -844,20 +897,46 @@ class Trainer(BaseTrainer):
                             q1_value=q1_value, q2_value=q2_value, cql_loss=cql_loss,
                             v_value=v_value, iql_loss=iql_loss, aux_loss=aux_loss
                         )
-
+                        
+                        # Accumulate loss when detach_memory=False (to avoid retain_graph issues)
+                        if should_accumulate_loss and is_train:
+                            if accumulated_loss is None:
+                                accumulated_loss = loss
+                            else:
+                                accumulated_loss = accumulated_loss + loss
+                        
                         # Always log metrics (to both TensorBoard and wandb if enabled)
                         self.log_metrics(
                             loss=loss, additional_metrics=additional_metrics, 
                             flag=flag, log_last_segment_only=self.log_last_segment_loss_only
                         )
 
-                    if is_train:
+                    if is_train and not should_accumulate_loss:
                         # For IQL, optimization is already done in the update method
                         if self.config["model_mode"] != "IQL":
                             self.optimizer.zero_grad()
                             loss.backward(retain_graph=True)
                             if self.config["training"]["grad_norm_clip"] is not None:
                                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config["training"]["grad_norm_clip"])
+                            
+                            # Log learnable LRU alpha AFTER backward but BEFORE optimizer.step()
+                            if self.config["model_mode"] == "ELMUR" and flag == 1:
+                                if hasattr(self.model, 'learnable_lru_alpha') and self.model.learnable_lru_alpha:
+                                    if hasattr(self.model, 'layers') and len(self.model.layers) > 0:
+                                        layer = self.model.layers[0]
+                                        alpha_value = layer.get_lru_alpha()
+                                        if isinstance(alpha_value, torch.Tensor):
+                                            metrics_to_log = {"lru_blend_alpha": alpha_value.item()}
+                                            # Also log the raw logit value for debugging
+                                            if layer.lru_alpha_logit is not None:
+                                                metrics_to_log["lru_alpha_logit"] = layer.lru_alpha_logit.item()
+                                                # Log gradient magnitude if available (should be available now)
+                                                if layer.lru_alpha_logit.grad is not None:
+                                                    metrics_to_log["lru_alpha_grad"] = layer.lru_alpha_logit.grad.abs().item()
+                                                else:
+                                                    metrics_to_log["lru_alpha_grad"] = 0.0  # No gradient
+                                            self.log(metrics_to_log)
+                            
                             self.optimizer.step()
                             if not self.use_cosine_decay:
                                 self.scheduler.step()  
@@ -872,6 +951,45 @@ class Trainer(BaseTrainer):
                             lr = self.optimizer.state_dict()['param_groups'][0]['lr']
 
                         self.log({"learning_rate": lr})
+                
+                # If detach_memory=False, do backward and optimizer step AFTER all segments
+                # This avoids retain_graph issues with cloned memory
+                if is_train and should_accumulate_loss and accumulated_loss is not None:
+                    self.optimizer.zero_grad()
+                    accumulated_loss.backward()  # No retain_graph needed - this is the final backward
+                    
+                    if self.config["training"]["grad_norm_clip"] is not None:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config["training"]["grad_norm_clip"])
+                    
+                    # Log learnable LRU alpha if enabled (AFTER backward but BEFORE optimizer.step())
+                    if learnable_alpha:
+                        if hasattr(self.model, 'layers') and len(self.model.layers) > 0:
+                            layer = self.model.layers[0]
+                            alpha_value = layer.get_lru_alpha()
+                            if isinstance(alpha_value, torch.Tensor):
+                                metrics_to_log = {"lru_blend_alpha": alpha_value.item()}
+                                # Also log the raw logit value for debugging
+                                if layer.lru_alpha_logit is not None:
+                                    metrics_to_log["lru_alpha_logit"] = layer.lru_alpha_logit.item()
+                                    # Log gradient magnitude if available (should be available now)
+                                    if layer.lru_alpha_logit.grad is not None:
+                                        metrics_to_log["lru_alpha_grad"] = layer.lru_alpha_logit.grad.abs().item()
+                                    else:
+                                        metrics_to_log["lru_alpha_grad"] = 0.0  # No gradient
+                                self.log(metrics_to_log)
+                    
+                    self.optimizer.step()
+                    if not self.use_cosine_decay:
+                        self.scheduler.step()
+                    
+                    tokens += (y1 >= 0).sum().item()
+                    
+                    if self.use_cosine_decay:
+                        lr = self.lr_scheduler.update_learning_rate(self.optimizer, tokens)
+                        self.log({"learning_rate": lr})
+                    else:
+                        lr = self.optimizer.state_dict()['param_groups'][0]['lr']
+                    self.log({"learning_rate": lr})
 
                 self.pbar.set_description(f"[train] ep {epoch+1} it {it} tTotal {loss.item():.2f} lr {lr:e} tokens, M {(tokens/1e6):.2f}")
                     

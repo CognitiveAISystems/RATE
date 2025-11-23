@@ -48,6 +48,7 @@ class ELMURLayer(nn.Module):
         memory_init_std=0.02,
         use_lru=True,
         lru_blend_alpha=0.999,
+        learnable_lru_alpha=False,
         memory_dropout=None,
         norm_type=None,
         # MoE parameters
@@ -77,7 +78,7 @@ class ELMURLayer(nn.Module):
         self.pre_lnorm = pre_lnorm
         self.memory_init_std = memory_init_std
         self.use_lru = use_lru
-        self.lru_blend_alpha = lru_blend_alpha
+        self.learnable_lru_alpha = learnable_lru_alpha
         self.memory_dropout = memory_dropout if memory_dropout is not None else dropout
         self.norm_type = norm_type
         # MoE parameters
@@ -95,6 +96,21 @@ class ELMURLayer(nn.Module):
         self.use_relative_bias = use_relative_bias
         self.use_tok2mem = use_tok2mem
         self.use_mem2tok = use_mem2tok
+        
+        # LRU alpha: learnable parameter or fixed value
+        if self.learnable_lru_alpha and self.use_lru:
+            # Initialize as learnable parameter in logit space (unconstrained)
+            # We'll use sigmoid to map it to [0, 1] range
+            import math
+            # Initialize to achieve the target lru_blend_alpha after sigmoid
+            init_logit = math.log(lru_blend_alpha / (1.0 - lru_blend_alpha + 1e-8))
+            self.lru_alpha_logit = nn.Parameter(torch.tensor(init_logit, dtype=torch.float32))
+            # Store the fixed value as None to avoid confusion
+            self.lru_blend_alpha = None
+        else:
+            # Fixed value
+            self.register_parameter('lru_alpha_logit', None)
+            self.lru_blend_alpha = lru_blend_alpha
         
         # Choose the right attention mechanism based on positional encoding
         if pos_encoding == 'relative':
@@ -184,6 +200,15 @@ class ELMURLayer(nn.Module):
         
         # Initialize parameters
         self._init_parameters()
+    
+    def get_lru_alpha(self):
+        """Get the current LRU alpha value (learnable or fixed)."""
+        if self.learnable_lru_alpha and self.use_lru and self.lru_alpha_logit is not None:
+            # Apply sigmoid to get value in [0, 1] range
+            # Return as 0-d tensor to maintain gradient flow
+            return torch.sigmoid(self.lru_alpha_logit)
+        else:
+            return self.lru_blend_alpha
 
     def _apply_sublayer(self, x: torch.Tensor, norm: nn.Module, fn, pre_lnorm: bool) -> torch.Tensor:
         """Apply a sublayer with consistent Pre-LN/Post-LN behavior.
@@ -418,9 +443,22 @@ class ELMURLayer(nn.Module):
             # For LRU we use a convex combination: alpha * new + (1-alpha) * old
             # For writing to an empty slot we use a hard replacement (alpha=1.0)
             alpha_base = torch.ones_like(mem_res[..., :1]) # [B, M, 1]
-            lru_alpha = torch.full_like(alpha_base, self.lru_blend_alpha) # [B, M, 1]
+            current_lru_alpha = self.get_lru_alpha()
+            
+            # Handle both learnable (tensor) and fixed (scalar) alpha values
+            if isinstance(current_lru_alpha, torch.Tensor):
+                # Learnable case: broadcast the scalar tensor
+                # Use multiplication by ones to create a new tensor that maintains gradients
+                lru_alpha = current_lru_alpha * torch.ones_like(alpha_base)
+            else:
+                # Fixed case: use scalar directly
+                lru_alpha = torch.full_like(alpha_base, current_lru_alpha)
+            
+            # Use torch.where to select between lru_alpha (for LRU slots) and alpha_base (for empty slots)
             alpha = torch.where(lru_one_hot.unsqueeze(-1), lru_alpha, alpha_base) # [B, M, 1]
+            # Blend: alpha * new + (1-alpha) * old
             blended = alpha * u_processed + (1.0 - alpha) * mem_res
+            # Select which slots to update
             new_vec = torch.where(write_mask.unsqueeze(-1), blended, mem_res)
             anchor = tok_pos[0].view(1, 1).expand_as(mem_pos)
             new_pos = torch.where(write_mask, anchor, mem_pos)
@@ -476,6 +514,7 @@ class ELMURModel(nn.Module):
         use_causal_self_attn_mask=True,  # Use causal masking in self-attention
         use_lru=True,            # Use least-recently-used memory replacement
         lru_blend_alpha=0.999,   # How much to blend old/new memory (1.0 = replace)
+        learnable_lru_alpha=False,  # Make lru_blend_alpha a learnable parameter
         pos_type="relative",     # Type of positional encoding to use
         train_stride=None,       # Training step size
         padding_idx=None,        # Padding token index
@@ -560,6 +599,7 @@ class ELMURModel(nn.Module):
         self.use_causal_self_attn_mask = use_causal_self_attn_mask
         self.use_lru = use_lru
         self.lru_blend_alpha = lru_blend_alpha
+        self.learnable_lru_alpha = learnable_lru_alpha
         self.pos_type = pos_type
         self.train_stride = train_stride
         self.max_seq_len = max_seq_len
@@ -613,7 +653,7 @@ class ELMURModel(nn.Module):
         self.layers = nn.ModuleList([ELMURLayer(
             d_model, d_ff, n_head, memory_size, self.pos_type,
             dropout, dropatt, pre_lnorm, max_seq_len,
-            memory_init_std, use_lru, lru_blend_alpha, self.memory_dropout,
+            memory_init_std, use_lru, lru_blend_alpha, learnable_lru_alpha, self.memory_dropout,
             self.norm_type,
             # MoE
             use_moe=self.use_moe,
@@ -975,7 +1015,7 @@ class ELMURModel(nn.Module):
     
     def get_memory_stats(self) -> dict:
         """Get memory usage statistics and configuration info"""
-        return {
+        stats = {
             "use_shared_memory": self.use_shared_memory,
             "memory_size": self.memory_size,
             "num_layers": self.num_layers,
@@ -985,8 +1025,22 @@ class ELMURModel(nn.Module):
             "use_tok2mem": self.use_tok2mem,
             "use_mem2tok": self.use_mem2tok,
             "use_lru": self.use_lru,
-            "lru_blend_alpha": self.lru_blend_alpha
+            "learnable_lru_alpha": self.learnable_lru_alpha
         }
+        
+        # Add current LRU alpha value (learnable or fixed)
+        if self.use_lru:
+            if self.learnable_lru_alpha and len(self.layers) > 0:
+                # Get the current learned value from the first layer
+                alpha_value = self.layers[0].get_lru_alpha()
+                if isinstance(alpha_value, torch.Tensor):
+                    stats["lru_blend_alpha"] = alpha_value.item()
+                else:
+                    stats["lru_blend_alpha"] = alpha_value
+            else:
+                stats["lru_blend_alpha"] = self.lru_blend_alpha
+        
+        return stats
     
     def get_moe_stats(self) -> dict:
         """Get MoE usage statistics and parameter counts"""
