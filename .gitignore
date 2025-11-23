@@ -167,3 +167,4 @@ PongNoFrameskip-v4/
 decision-transformer/
 run_experiments/test_mujoco*.sh
 =12
+elmur_linear_probing.ipynb
